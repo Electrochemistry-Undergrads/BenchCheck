@@ -154,7 +154,7 @@ def test_live_call_is_cached_without_key(tmp_path):
 
     client = SerpApiClient(settings(tmp_path), transport=httpx.MockTransport(handler))
     res = client.scholar("LiMn2O4 aqueous LiCl oxygen evolution side reaction")
-    assert res.ok and res.status == "live" and not res.cached
+    assert res.ok and res.status == "provider-cached" and res.cached
     assert seen["params"]["engine"] == "google_scholar" and seen["params"]["api_key"] == "test-key-123"
     files = list((tmp_path / "live" / "google_scholar").glob("*.json"))
     assert len(files) == 1

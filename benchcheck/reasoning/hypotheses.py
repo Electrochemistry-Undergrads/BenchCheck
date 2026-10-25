@@ -9,6 +9,7 @@ Rules never assign a peak to a mechanism: they propose hypotheses to test.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 
 from ..cv.reference import FARADAY, GAS_CONSTANT
@@ -30,6 +31,7 @@ THRESHOLDS = {
 
 # Canonical search tokens for dictionary materials (what Google Scholar indexes well).
 SEARCH_TOKENS = {
+    "prussian_blue": "Prussian blue",
     "lmo": "LiMn2O4", "lambda_mno2": "λ-MnO2", "mn_ion_sieve": "H1.6Mn1.6O4", "lnmo": "LiNi0.5Mn1.5O4",
     "mno2": "MnO2", "lfp": "LiFePO4", "lco": "LiCoO2", "nmc": "NMC cathode", "lto": "Li4Ti5O12",
     "pba": "Prussian blue analogue", "ferricyanide": "ferricyanide", "ferrocene": "ferrocene",
@@ -543,6 +545,11 @@ def evidence_plan(analysis: dict, hypotheses: list[dict], max_queries: int) -> l
         "analyte": meta.get("analyte"),
         "elements": [e for e in profile["elements"] if e in ELEMENT_NAMES],
     }
+    if f["process_type"] == "dissolved_species":
+        solvent_text = (meta.get("electrolyte") or "") + " " + (meta.get("notes") or "")
+        specific = re.search(r"acetonitrile|MeCN|dichloromethane|DCM|DMSO|propylene carbonate|dimethylformamide|DMF", solvent_text, re.I)
+        if specific:
+            ctx["solvent_q"] = specific.group(0)
     triggered = [h["id"] for h in hypotheses if h["triggered"]]
     plan = []
     subject = ctx["material"] if f["process_type"] != "dissolved_species" else (ctx["analyte"] or ctx["material"])

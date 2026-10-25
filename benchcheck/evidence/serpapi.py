@@ -19,6 +19,9 @@ import hashlib
 import json
 import logging
 import time
+import ipaddress
+import socket
+from urllib.parse import urlsplit
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +32,9 @@ from ..settings import Settings
 
 SERPAPI_URL = "https://serpapi.com/search.json"
 CACHE_FORMAT = "benchcheck-serpapi-cache/1"
+_DOMAIN_FAILURES = {}
+DOMAIN_FAILURE_TTL = 900
+
 EMPTY_RESULT_ERRORS = ("hasn't returned any results", "has not returned any results")
 
 # httpx logs full request URLs (including query parameters) at INFO level.
@@ -58,6 +64,7 @@ class CallResult:
     served_at: str | None = None
     elapsed_s: float | None = None
     fallback_note: str | None = None
+    credit_estimate: int | None = None
 
     def log_entry(self, **extra) -> dict:
         meta = (self.data or {}).get("search_metadata") or {}
@@ -76,7 +83,8 @@ class CallResult:
             "serpapi_search_id": meta.get("id"),
             "serpapi_created_at": meta.get("created_at"),
             "google_scholar_url": meta.get("google_scholar_url"),
-            "credits": 0 if self.cached or not self.ok else 1,
+            "credits": self.credit_estimate if self.credit_estimate is not None else (0 if self.cached or self.status == "provider-cached" or not self.ok else 1),
+            "credits_are_estimates": True,
         }
         entry.update(extra)
         return entry
@@ -178,7 +186,7 @@ class SerpApiClient:
             if data is None:
                 error = f"SerpApi returned a non-JSON response (HTTP {resp.status_code})."
             elif "error" in data and not any(m in str(data["error"]) for m in EMPTY_RESULT_ERRORS):
-                error = f"SerpApi error (HTTP {resp.status_code}): {data['error']}"
+                error = f"SerpApi upstream error: {data['error']}"
             elif resp.status_code >= 400:
                 error = f"SerpApi returned HTTP {resp.status_code}."
             if error:
@@ -187,9 +195,19 @@ class SerpApiClient:
                     return from_cache(f"Live call failed ({error}); served the cached response instead.")
                 return CallResult(ok=False, status="error", engine=engine, params=params, error=error,
                                   served_at=served, elapsed_s=elapsed)
-            retrieved = utc_now()
+            created = (data.get("search_metadata") or {}).get("created_at")
+            provider_cached = False
+            if created:
+                try:
+                    produced = datetime.fromisoformat(created.replace(" UTC", "+00:00").replace("Z", "+00:00"))
+                    if produced.tzinfo is None:
+                        produced = produced.replace(tzinfo=timezone.utc)
+                    provider_cached = (datetime.now(timezone.utc) - produced).total_seconds() > 60
+                except (ValueError, TypeError):
+                    pass
+            retrieved = created if provider_cached else utc_now()
             self.cache.put(engine, key, params, data, retrieved, self.settings.serpapi_key)
-            return CallResult(ok=True, status="live", engine=engine, params=params, data=data, cached=False,
+            return CallResult(ok=True, status="provider-cached" if provider_cached else "live", engine=engine, params=params, data=data, cached=provider_cached,
                               retrieved_at=retrieved, served_at=served, elapsed_s=elapsed)
         except httpx.HTTPError as exc:
             message = self._redact(f"Could not reach SerpApi ({type(exc).__name__}).")
@@ -202,8 +220,43 @@ class SerpApiClient:
         return self.call("google_scholar", {"q": query, "hl": "en", "num": num}, prefer_cache)
 
     def extract(self, url: str, prefer_cache: bool = False) -> CallResult:
-        return self.call("extract", {"url": url, "include_markdown": "true"}, prefer_cache)
+        # Even server-selected search results can contain malicious target URLs.
+        host = validate_public_url(url, resolve=self._transport is None)
+        failure_key = (str(self.settings.cache_dir), host)
+        failure = _DOMAIN_FAILURES.get(failure_key)
+        if failure and time.monotonic() - failure[0] < DOMAIN_FAILURE_TTL:
+            return CallResult(ok=False, status="unavailable", engine="extract", params={"url": url},
+                              error="This domain recently failed extraction; retry after 15 minutes.")
+        result = self.call("extract", {"url": url, "include_markdown": "true"}, prefer_cache)
+        if result.ok:
+            result.credit_estimate = 0 if result.cached else 1
+            from .sources import parse_extract
+            if parse_extract(result.data or {}).get("level") is None:
+                result.ok, result.status = False, "error"
+                result.error = "The retrieved page has no usable abstract or full text."
+        if not result.ok and (result.status == "error" or "robots" in (result.error or "").lower()):
+            _DOMAIN_FAILURES[failure_key] = (time.monotonic(), result.error)
+        return result
 
 
 def as_dict(result: CallResult) -> dict:
     return asdict(result)
+
+
+def validate_public_url(url: str, resolve: bool = True) -> str:
+    try:
+        parsed = urlsplit(url.strip())
+        host = parsed.hostname
+        if parsed.scheme.lower() not in ("http", "https") or not host or parsed.username or parsed.password:
+            raise ValueError
+        if host.lower() == "localhost" or host.lower().endswith(".localhost"):
+            raise ValueError
+        try:
+            addresses = [ipaddress.ip_address(host)]
+        except ValueError:
+            addresses = [ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(host, parsed.port or 443)] if resolve else []
+        if any(not address.is_global for address in addresses):
+            raise ValueError
+        return host.lower()
+    except (ValueError, OSError) as exc:
+        raise ValueError("source link must resolve to a public HTTP/HTTPS address") from exc

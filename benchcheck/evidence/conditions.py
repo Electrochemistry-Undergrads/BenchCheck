@@ -41,8 +41,10 @@ MATERIALS: tuple[Material, ...] = (
              (r"\bNMC\d{0,3}\b", r"\bNCM\d{0,3}\b", r"LiNi[0-9.xyz]*Mn[0-9.xyz]*Co[0-9.xyz]*O2",
               r"LiNi[0-9.xyz]*Co[0-9.xyz]*Mn[0-9.xyz]*O2"), ("Ni", "Mn", "Co")),
     Material("lto", "Li₄Ti₅O₁₂", "titanate", (r"Li4Ti5O12", r"\bLTO\b"), ("Ti",)),
+    Material("prussian_blue", "Prussian blue", "pba",
+             (r"prussian blue(?! analog)", r"KFe\[Fe\(CN\)6\]", r"Fe4\[Fe\(CN\)6\]3"), ("Fe",)),
     Material("pba", "Prussian blue analogue", "pba",
-             (r"prussian blue", r"(?:nickel|copper|cobalt|manganese|zinc|iron) hexacyanoferrate",
+             (r"prussian blue analog", r"(?:nickel|copper|cobalt|manganese|zinc|iron) hexacyanoferrate",
               r"\b(?:Ni|Cu|Co|Mn|Zn)HCF\b", r"\bPBAs?\b"), ("Fe",)),
     Material("ferricyanide", "ferri/ferrocyanide", "dissolved_couple",
              (r"ferricyanide", r"ferrocyanide", r"Fe\(CN\)\s?6", r"potassium hexacyanoferrate"), ("Fe",)),
@@ -70,13 +72,13 @@ TRANSITION_METALS = ("Mn", "Ni", "Co", "Fe", "Cu", "Zn", "Ti", "V", "Cr", "Mo", 
 SALTS = (
     "LiCl", "Li2SO4", "LiNO3", "LiOH", "Li2CO3", "LiPF6", "LiClO4", "LiTFSI", "LiFSI", "LiBF4", "LiBOB",
     "NaCl", "Na2SO4", "NaNO3", "NaClO4", "NaPF6", "NaOH", "KCl", "K2SO4", "KNO3", "KOH",
-    "MgCl2", "MgSO4", "CaCl2", "ZnSO4", "H2SO4", "HCl", "HClO4", "HNO3", "PBS",
+    "ZnCl2", "MgCl2", "MgSO4", "CaCl2", "ZnSO4", "H2SO4", "HCl", "HClO4", "HNO3", "PBS",
     "K3Fe(CN)6", "K4Fe(CN)6", "TBAPF6", "TBAP",
 )
 _SALT_PATTERNS = [(s, re.compile(r"(?<![A-Za-z0-9])" + re.escape(s) + r"(?![A-Za-z0-9])")) for s in SALTS]
 
 _AQUEOUS = [re.compile(p, re.IGNORECASE) for p in (
-    r"\baqueous\b", r"\bin water\b", r"water-in-salt", r"\bbrines?\b", r"sea\s?water", r"salt[- ]lake",
+    r"(?<!non-)(?<!non)\baqueous\b", r"\bin water\b", r"water-in-salt", r"\bbrines?\b", r"sea\s?water", r"salt[- ]lake",
     r"geothermal", r"\bH2O\b",
 )]
 _NONAQUEOUS = [re.compile(p, re.IGNORECASE) for p in (
@@ -86,7 +88,7 @@ _NONAQUEOUS = [re.compile(p, re.IGNORECASE) for p in (
 _BRINE = re.compile(r"\bbrines?\b|sea\s?water|salt[- ]lake|geothermal", re.IGNORECASE)
 
 _CONC = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(mM|M|mol\s?(?:L|dm|dm3)\s?-\s?1|mol\s?(?:L|dm3?)\^?-1|mol/L|mol\s?kg\s?-\s?1|mol/kg)"
+    r"(\d+(?:\.\d+)?)\s*(mM|M|m|mol\s?(?:L|dm|dm3)\s?-\s?1|mol\s?(?:L|dm3?)\^?-1|mol/L|mol\s?kg\s?-\s?1|mol/kg)"
     r"\s+(?:of\s+)?(" + "|".join(re.escape(s) for s in SALTS) + r")(?![A-Za-z0-9])"
 )
 
@@ -126,6 +128,7 @@ class Found:
 @dataclass
 class ExtractedConditions:
     materials: list[Found] = field(default_factory=list)
+    analytes: list[Found] = field(default_factory=list)
     salts: list[Found] = field(default_factory=list)
     concentrations: list[dict] = field(default_factory=list)
     solvent: dict = field(default_factory=dict)
@@ -152,6 +155,8 @@ def find_materials(original: str, location: str = "text") -> list[Found]:
             if m:
                 found.append(Found(mat.key, _excerpt(original, m.start(), m.end()), location, m.start(), m.end()))
                 break
+    if any(f.value == "prussian_blue" for f in found):
+        found = [f for f in found if f.value != "ferricyanide"]
     return found
 
 
@@ -166,7 +171,7 @@ def parse_electrolyte(original: str) -> dict:
     for m in _CONC.finditer(norm):
         value = float(m.group(1))
         unit = m.group(2).replace(" ", "")
-        if unit.lower().startswith("mol") and "kg" in unit.lower():
+        if unit == "m" or (unit.lower().startswith("mol") and "kg" in unit.lower()):
             molar, unit_label = None, "mol/kg"
         elif unit == "mM":
             molar, unit_label = value * 1e-3, "mM"
@@ -227,7 +232,7 @@ def custom_material_pattern(material_text: str | None) -> re.Pattern | None:
     return re.compile(r"(?<![A-Za-z0-9])" + re.escape(token) + r"(?![A-Za-z0-9])", re.IGNORECASE)
 
 
-def extract_conditions(texts: list[tuple[str, str]], extra_material: re.Pattern | None = None) -> ExtractedConditions:
+def extract_conditions(texts: list[tuple[str, str]], extra_material: re.Pattern | None = None, analyte: str | None = None) -> ExtractedConditions:
     """Run all extractors over [(location, text), ...] in priority order."""
     out = ExtractedConditions()
     seen_materials, seen_refs, seen_salts = set(), set(), set()
@@ -235,7 +240,16 @@ def extract_conditions(texts: list[tuple[str, str]], extra_material: re.Pattern 
     for location, text in texts:
         if not text:
             continue
-        for f in find_materials(text, location):
+        if analyte:
+            pattern = re.compile(r"(?<![A-Za-z0-9])" + re.escape(normalize(analyte)) + r"(?![A-Za-z0-9])", re.I)
+            match = pattern.search(normalize(text))
+            if match:
+                out.analytes.append(Found("user_analyte", _excerpt(text, match.start(), match.end()), location, match.start(), match.end()))
+        # Reference/citation mentions and synthesis media do not establish test conditions.
+        text = re.split(r"(?im)^\s*(?:#+\s*)?references\s*$", text)[0]
+        material_text = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+|\n", text)
+                                 if not re.search(r"\[\s*\d+(?:[,–—\- ]+\d+)*\s*\]", sentence))
+        for f in find_materials(material_text, location):
             if f.value not in seen_materials:
                 seen_materials.add(f.value)
                 out.materials.append(f)
@@ -244,7 +258,9 @@ def extract_conditions(texts: list[tuple[str, str]], extra_material: re.Pattern 
             if m:
                 seen_materials.add("user_material")
                 out.materials.append(Found("user_material", _excerpt(text, m.start(), m.end()), location, m.start(), m.end()))
-        electrolyte = parse_electrolyte(text)
+        condition_text = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+|\n", text)
+                                  if not re.search(r"precursor|synthesi[sz]|compared (?:with|to)|citric acid|\bvs\.?\s+(?:LiCl|LiNO3|LiTFSI)", sentence, re.I) and re.search(r"\bin\b|electrolyte|solution|aqueous|voltammetr|cyclic|tested|measured|cycled", sentence, re.I))
+        electrolyte = parse_electrolyte(condition_text)
         for s in electrolyte["salts"]:
             if s not in seen_salts:
                 seen_salts.add(s)
@@ -296,6 +312,14 @@ def compare(extracted: ExtractedConditions, user: dict) -> list[dict]:
 
     # Material
     u = user["material"]
+    all_materials = extracted.materials
+    if user.get("analyte"):
+        ap = user_material_profile(user["analyte"])
+        hits = extracted.analytes + [m for m in all_materials if m.value in ap["keys"]]
+        rows.append({"condition": "Analyte", "user": user["analyte"], "paper": user["analyte"] if hits else None,
+                     "status": "match" if hits else "not_stated", "note": "Same redox analyte." if hits else "Analyte not stated in retrieved text.",
+                     "location": hits[0].location if hits else None, "excerpt": hits[0].excerpt if hits else None})
+        extracted.materials = [m for m in all_materials if material_by_key(m.value) is None or material_by_key(m.value).family != "dissolved_couple"]
     paper_keys = [f.value for f in extracted.materials]
 
     def label_for(key: str) -> str:
@@ -313,7 +337,9 @@ def compare(extracted: ExtractedConditions, user: dict) -> list[dict]:
     elif not paper_keys:
         status, note = "not_stated", "No electrode material recognized in the retrieved text."
     elif user_keys & set(paper_keys):
-        status, note = "match", "Same material as your experiment."
+        matched = [m for m in extracted.materials if m.value in user_keys]
+        strong = any(m.location in ("title", "abstract") or "Experimental" in m.location or "methods" in m.location for m in matched)
+        status, note = ("match", "Same material as your experiment.") if strong else ("related", "Material mentioned; experimental use is not established by the retrieved excerpt.")
     elif u["families"] and {family_for(k) for k in paper_keys} & set(u["families"]):
         status = "related"
         note = (f"Related material ({_FAMILY_LABELS.get(u['families'][0], u['families'][0])}), "
@@ -335,14 +361,20 @@ def compare(extracted: ExtractedConditions, user: dict) -> list[dict]:
         status, note = "user_missing", "Enter your electrolyte (e.g., '1 M LiCl') to compare."
     elif not paper_salts:
         status, note = "not_stated", "Electrolyte salt not stated in the retrieved text."
-    elif set(ue["salts"]) & set(paper_salts):
+    elif set(ue["salts"]) == set(paper_salts):
         status, note = "match", "Same electrolyte salt."
         u_conc = {c["salt"]: c["molar"] for c in ue["concentrations"] if c["molar"]}
         p_conc = {c["salt"]: c["molar"] for c in extracted.concentrations if c["molar"]}
         common = set(u_conc) & set(p_conc)
+        u_molal = {c["salt"] for c in ue["concentrations"] if c["molar"] is None}
+        p_molal = {c["salt"] for c in extracted.concentrations if c["molar"] is None}
+        if u_molal != p_molal:
+            status, note = "related", "Same salt, but molal and molar concentrations are not interchangeable."
+        elif u_conc and not p_conc:
+            status, note = "related", "Same salt; concentration not stated in the retrieved text."
         if common:
             salt = sorted(common)[0]
-            if not math.isclose(u_conc[salt], p_conc[salt], rel_tol=0.25):
+            if not math.isclose(u_conc[salt], p_conc[salt], rel_tol=0.05):
                 status = "related"
                 note = (f"Same salt, different concentration ({p_conc[salt]:g} M vs your {u_conc[salt]:g} M): "
                         "insertion potentials and side reactions can shift.")
@@ -409,11 +441,11 @@ def compare(extracted: ExtractedConditions, user: dict) -> list[dict]:
     elif not values and not ranges:
         status, note = "not_stated", "Scan rate not stated in the retrieved text."
     else:
-        in_range = any(a / 3.0 <= uv <= b * 3.0 for a, b in ranges)
+        in_range = any(a <= uv <= b for a, b in ranges)
         nearest = min(values + [x for r in ranges for x in r], key=lambda v: abs(math.log10(v / uv)))
         ratio = nearest / uv
-        if in_range or abs(math.log10(ratio)) <= math.log10(3.0):
-            status, note = "match", "Similar scan-rate regime (within a factor of 3)."
+        if in_range or .8 <= ratio <= 1.2:
+            status, note = "match", "Scan rate matches within ±20%."
         else:
             factor = ratio if ratio >= 1 else 1 / ratio
             direction = "faster" if ratio > 1 else "slower"
@@ -434,9 +466,10 @@ def applicability(rows: list[dict]) -> dict:
     related = [r["condition"] for r in rows if r["status"] == "related"]
     differs = [r for r in rows if r["status"] == "differs"]
     unknown = [r["condition"] for r in rows if r["status"] == "not_stated"]
-    material = next(r for r in rows if r["condition"] == "Electrode material")
+    material = next((r for r in rows if r["condition"] == "Analyte"), next(r for r in rows if r["condition"] == "Electrode material"))
+    electrolyte = next(r for r in rows if r["condition"] == "Electrolyte")
     solvent = next(r for r in rows if r["condition"] == "Solvent")
-    if material["status"] == "match" and solvent["status"] == "match":
+    if material["status"] == "match" and solvent["status"] == "match" and electrolyte["status"] == "match" and not differs:
         level = "condition-matched"
     elif material["status"] in ("match", "related") and solvent["status"] != "differs":
         level = "partially matched"

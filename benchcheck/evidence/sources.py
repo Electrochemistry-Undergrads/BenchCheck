@@ -73,6 +73,8 @@ def _year_and_venue(summary: str | None) -> tuple[int | None, str | None]:
     venue = None
     if len(parts) >= 2:
         venue = re.sub(r",?\s*\b(19|20)\d{2}\b", "", parts[1]).strip(" ,…") or None
+    if venue and ("…" in venue or "..." in venue):
+        venue = None
     return (int(years[-1]) if years else None), venue
 
 
@@ -139,6 +141,7 @@ def _user_context(ctx: EvidenceContext) -> dict:
     salts = [re.compile(r"(?<![A-Za-z0-9])" + re.escape(s) + r"(?![A-Za-z0-9])") for s in electrolyte["salts"]]
     return {
         "material": profile,
+        "analyte": meta.analyte if meta.process_type == "dissolved_species" else None,
         "electrolyte": electrolyte,
         "electrolyte_text": meta.electrolyte,
         "solvent": meta.solvent,
@@ -209,6 +212,7 @@ def find_passages(text: str, level: str, location: str, hypothesis_ids: list[str
                 "highlights": _highlight_spans(shown, compiled, uctx),
                 "score": round(score, 2),
                 "verbatim_verified": is_verbatim(passage, text),
+                "verification_label": "matches search snippet" if level == LEVEL_SNIPPET else "matches retrieved text",
             })
     return out
 
@@ -239,7 +243,7 @@ def snippet_record(result: dict, ctx: EvidenceContext, query_id: str) -> dict:
     uctx = _user_context(ctx)
     snippet = src["snippet"] or ""
     passages = find_passages(snippet, LEVEL_SNIPPET, "Google Scholar snippet", ctx.hypothesis_ids, uctx)
-    extracted = extract_conditions([("title", src["title"]), (LEVEL_SNIPPET, snippet)], uctx["custom_material"])
+    extracted = extract_conditions([("title", src["title"]), (LEVEL_SNIPPET, snippet)], uctx["custom_material"], uctx.get("analyte"))
     rows = compare(extracted, uctx)
     src.update({
         "found_by": [query_id],
@@ -381,10 +385,19 @@ def extract_record(source: dict, extract_data: dict | None, ctx: EvidenceContext
                           **call_meta}
         return src
     parsed = parse_extract(extract_data)
+    metadata = dict(_meta_pairs((extract_data or {}).get("meta_tags")))
+    if metadata.get("citation_doi"):
+        src["doi"] = metadata["citation_doi"]
+    if metadata.get("citation_journal_title"):
+        src["venue"] = metadata["citation_journal_title"]
+    date = metadata.get("citation_publication_date") or metadata.get("citation_date")
+    if date and re.match(r"\d{4}", date):
+        src["year"] = int(date[:4])
     content = {"status": parsed["level"] or "no usable content", "reason": parsed["reason"],
                "word_count": parsed["word_count"], "final_url": parsed["final_url"], "sections": parsed["sections"],
                **call_meta}
     src["content"] = content
+    src["content"]["ok"] = parsed["level"] is not None
     if parsed["level"] is None:
         return src
     passages = []
@@ -405,7 +418,7 @@ def extract_record(source: dict, extract_data: dict | None, ctx: EvidenceContext
     covered = {p["hypothesis_id"] for p in passages}
     passages += [p for p in source.get("passages", []) if p["hypothesis_id"] not in covered]
     texts.append((LEVEL_SNIPPET, source.get("snippet") or ""))
-    rows = compare(extract_conditions(texts, uctx["custom_material"]), uctx)
+    rows = compare(extract_conditions(texts, uctx["custom_material"], uctx.get("analyte")), uctx)
     src.update({
         "evidence_level": parsed["level"],
         "passages": passages,
@@ -421,11 +434,11 @@ def extract_record(source: dict, extract_data: dict | None, ctx: EvidenceContext
 
 
 def extraction_url(source: dict) -> str | None:
-    if _usable_url(source.get("link")):
-        return source["link"]
     for r in source.get("resources") or []:
         if _usable_url(r.get("link")):
             return r["link"]
+    if _usable_url(source.get("link")):
+        return source["link"]
     return None
 
 
@@ -440,9 +453,13 @@ def merge_sources(records: list[dict]) -> list[dict]:
             for q in rec.get("found_by", []):
                 if q not in existing["found_by"]:
                     existing["found_by"].append(q)
-            have = {p["hypothesis_id"] for p in existing.get("passages", [])}
+            existing.setdefault("snippets", [existing.get("snippet")])
+            for snippet in rec.get("snippets", [rec.get("snippet")]):
+                if snippet and snippet not in existing["snippets"]:
+                    existing["snippets"].append(snippet)
+            have = {p["text"] for p in existing.get("passages", [])}
             existing["passages"] = existing.get("passages", []) + [p for p in rec.get("passages", [])
-                                                                  if p["hypothesis_id"] not in have]
+                                                                  if p["text"] not in have]
         else:
             merged[key] = {**rec, "found_by": list(rec.get("found_by", []))}
     return list(merged.values())
@@ -457,6 +474,8 @@ def select_for_extraction(sources: list[dict], budget: int) -> list[dict]:
         material = next((r for r in s.get("conditions", []) if r["condition"] == "Electrode material"), {})
         hyp_hits = len({p["hypothesis_id"] for p in s.get("passages", []) if p["hypothesis_id"] != "context"})
         key = (
+            1 if "sciencedirect.com" in url else 0,
+            0 if ".pdf" in url.lower() or source_open_access(url) else 1,
             -len(s.get("found_by", [])),
             0 if material.get("status") == "match" else 1 if material.get("status") == "related" else 2,
             -hyp_hits,
@@ -470,3 +489,8 @@ def select_for_extraction(sources: list[dict], budget: int) -> list[dict]:
         ranked.append((key, {"source_id": s["source_id"], "url": url, "reason": ", ".join(reason)}))
     ranked.sort(key=lambda x: x[0])
     return [r for _, r in ranked[:budget]]
+
+
+def source_open_access(url: str) -> bool:
+    from urllib.parse import urlsplit
+    return (urlsplit(url).hostname or "").lower() in {"arxiv.org", "pmc.ncbi.nlm.nih.gov", "www.mdpi.com", "mdpi.com"}
