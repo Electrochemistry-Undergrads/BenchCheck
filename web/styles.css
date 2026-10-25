@@ -385,3 +385,6 @@ select { min-width: 0; max-width: 100%; text-overflow: ellipsis; }
 input:invalid { border-color: var(--color-warn, #b44c27); }
 .workflow li.is-complete .workflow-n { background: #e4f1eb; color: #225b45; }
 @media (max-width: 600px) { .inline { grid-template-columns: minmax(0, 1fr) minmax(6rem, auto); } }
+
+.field-error { color: #a43b25; font-size: .8rem; }
+#scale-note { overflow-wrap: anywhere; min-width: 0; max-width: 100%; }

@@ -260,3 +260,8 @@ def validate_public_url(url: str, resolve: bool = True) -> str:
         return host.lower()
     except (ValueError, OSError) as exc:
         raise ValueError("source link must resolve to a public HTTP/HTTPS address") from exc
+
+
+def domain_recently_failed(url: str) -> bool:
+    host = (urlsplit(url).hostname or "").lower()
+    return any(key[1] == host and time.monotonic() - value[0] < DOMAIN_FAILURE_TTL for key, value in _DOMAIN_FAILURES.items())

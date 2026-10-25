@@ -157,7 +157,7 @@ def _prepare(table: ParsedTable, config: AnalysisConfig, processing: list[dict],
                      "from": ref_label, "explanation": plan["explanation"], "caveats": plan["caveats"], "note": plan.get("note")}
             processing.append({
                 "step": "Reference-scale conversion (user-confirmed)",
-                "detail": f"{plan['explanation']} {' '.join(plan['caveats'])}",
+                "detail": f"{plan['explanation']} {' '.join(plan['caveats'])}" + (f" Source note: {plan['note']}" if plan.get("note") else ""),
             })
     return E, i, t, density, scale, dropped
 
@@ -176,10 +176,10 @@ def _sweep_info(seg: Segment) -> dict:
     }
 
 
-def _analyze_sweep(seg, role, E, i, i_s, t, scan_rate, threshold, baseline_method, noise, half_width_hint=None):
+def _analyze_sweep(seg, role, E, i, i_s, t, scan_rate, threshold, baseline_method, noise, half_width_hint=None, settling_v=.010):
     a, b = seg.start, seg.end + 1
     Es, Is, Ss = E[a:b], i[a:b], i_s[a:b]
-    candidates = pk.detect_sweep_peaks(Es, Ss, seg.direction, threshold)
+    candidates = pk.detect_sweep_peaks(Es, Ss, seg.direction, threshold, settling_v)
     first = min(candidates, key=lambda c: c["local_index"]) if candidates else None
     baseline = pk.prewave_baseline(
         Es, Is, Ss, seg.direction, first["local_index"] if first else None, baseline_method, half_width_hint
@@ -203,7 +203,7 @@ def _label_peaks(sweeps: list[dict]) -> None:
             p.label = f"{prefix}{n}"
 
 
-def _cycle_features(cycle, segments, E, i, i_s, t, scan_rate, noise, process_type, baseline_method):
+def _cycle_features(cycle, segments, E, i, i_s, t, scan_rate, noise, process_type, baseline_method, settling_v=.010):
     seg_f = segments[cycle.forward] if cycle.forward is not None else None
     seg_r = segments[cycle.reverse] if cycle.reverse is not None else None
     idx = [s for s in (seg_f, seg_r) if s is not None]
@@ -211,15 +211,15 @@ def _cycle_features(cycle, segments, E, i, i_s, t, scan_rate, noise, process_typ
     span = float(np.ptp(i_s[lo:hi])) if hi - lo > 1 else 0.0
     threshold = max(pk.PROMINENCE_NOISE_MULTIPLE * noise, pk.PROMINENCE_SPAN_FRACTION * span, 1e-15)
 
-    fwd = _analyze_sweep(seg_f, "forward", E, i, i_s, t, scan_rate, threshold, baseline_method, noise) if seg_f else None
+    fwd = _analyze_sweep(seg_f, "forward", E, i, i_s, t, scan_rate, threshold, baseline_method, noise, settling_v=settling_v) if seg_f else None
     hint = fwd["baseline"].get("onset_half_width_v") if fwd else None
     ret = (
-        _analyze_sweep(seg_r, "return", E, i, i_s, t, scan_rate, threshold, baseline_method, noise, hint)
+        _analyze_sweep(seg_r, "return", E, i, i_s, t, scan_rate, threshold, baseline_method, noise, hint, settling_v)
         if seg_r else None
     )
     if fwd and ret and baseline_method != "zero" and fwd["baseline"]["method"] != ret["baseline"]["method"]:
-        fwd = _analyze_sweep(seg_f, "forward", E, i, i_s, t, scan_rate, threshold, "zero", noise)
-        ret = _analyze_sweep(seg_r, "return", E, i, i_s, t, scan_rate, threshold, "zero", noise)
+        fwd = _analyze_sweep(seg_f, "forward", E, i, i_s, t, scan_rate, threshold, "zero", noise, settling_v=settling_v)
+        ret = _analyze_sweep(seg_r, "return", E, i, i_s, t, scan_rate, threshold, "zero", noise, settling_v=settling_v)
         for sweep in (fwd, ret):
             sweep["baseline"]["note"] = "Pre-wave baseline unavailable on one sweep; zero baseline used on both for a consistent comparison."
     _label_peaks([s for s in (fwd, ret) if s])
@@ -554,17 +554,18 @@ def analyze(table: ParsedTable, config: AnalysisConfig) -> dict:
 
     detection_noise = noise * pk.smoothing_noise_gain(main_w)
     cycle_feats = [
-        _cycle_features(c, segments, E, i, i_s, t, rate_for_charge, detection_noise, meta.process_type, baseline_method)
+        _cycle_features(c, segments, E, i, i_s, t, rate_for_charge, detection_noise, meta.process_type, baseline_method, max(.010, 2 * config.processing.smoothing_mv / 1000))
         for c in cycles
     ]
+    baseline_notices = {}
     for c in cycle_feats:
         for role in ("forward", "return"):
             sweep = c.get(role)
             if sweep and sweep["baseline"]["method"] == "zero" and baseline_method != "zero":
                 note = sweep["baseline"]["note"]
-                message = f"Cycle {c['number']} {role}: {note}"
-                if message not in notices:
-                    notices.append(message)
+                baseline_notices.setdefault(note, set()).add(c["number"])
+    for note, numbers in baseline_notices.items():
+        notices.append(f"Cycles {', '.join(map(str, sorted(numbers)))}: {note}")
     processing.append({
         "step": "Peak detection",
         "detail": f"Local extrema with prominence ≥ max({pk.PROMINENCE_NOISE_MULTIPLE:g}× noise σ, "

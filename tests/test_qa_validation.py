@@ -53,3 +53,15 @@ def test_unusual_metadata_warns():
     raw,cfg = example_config('synthetic_lmo_clear_return')
     cfg.metadata.temperature_c = 200
     assert any('temperature_c' in n for n in analyze(parse_table(raw),cfg)['notices'])
+
+
+def test_1000_micromolar_randles_current_is_13_microamps():
+    from pathlib import Path
+    from types import SimpleNamespace
+    client=TestClient(app)
+    namespace={'print':lambda *a,**k:None,'requests':SimpleNamespace(post=lambda url,**kwargs:client.post(url.removeprefix('http://127.0.0.1:8000'),**kwargs))}
+    exec((Path(__file__).parent/'qa_cases'/'input_29.py').read_text(),namespace)
+    response=namespace['analyze']({**namespace['RS'],'analyte_concentration':{'value':1000,'unit':'µM'}})
+    assert response.status_code==200
+    rule=next(h for h in response.json()['hypotheses'] if h['id']=='concentration_or_area')
+    assert rule['randles_sevcik']['expected_a']==pytest.approx(13.3e-6,rel=.01)

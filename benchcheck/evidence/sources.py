@@ -73,7 +73,7 @@ def _year_and_venue(summary: str | None) -> tuple[int | None, str | None]:
     venue = None
     if len(parts) >= 2:
         venue = re.sub(r",?\s*\b(19|20)\d{2}\b", "", parts[1]).strip(" ,…") or None
-    if venue and ("…" in venue or "..." in venue):
+    if len(parts) >= 2 and ("…" in parts[1] or "..." in parts[1]):
         venue = None
     return (int(years[-1]) if years else None), venue
 
@@ -90,7 +90,9 @@ def normalize_result(result: dict) -> dict:
         {"title": r.get("title"), "file_format": r.get("file_format"), "link": r.get("link")}
         for r in (result.get("resources") or []) if r.get("link")
     ]
+    doi_match = re.search(r"10\.\d{4,9}/[^\s?#]+", result.get("link") or "")
     return {
+        "doi": doi_match.group(0) if doi_match else None,
         "source_id": _source_id(result),
         "title": result.get("title") or "(untitled result)",
         "link": result.get("link") if _usable_url(result.get("link")) else None,
@@ -473,7 +475,9 @@ def select_for_extraction(sources: list[dict], budget: int) -> list[dict]:
             continue
         material = next((r for r in s.get("conditions", []) if r["condition"] == "Electrode material"), {})
         hyp_hits = len({p["hypothesis_id"] for p in s.get("passages", []) if p["hypothesis_id"] != "context"})
+        from .serpapi import domain_recently_failed
         key = (
+            1 if domain_recently_failed(url) else 0,
             1 if "sciencedirect.com" in url else 0,
             0 if ".pdf" in url.lower() or source_open_access(url) else 1,
             -len(s.get("found_by", [])),

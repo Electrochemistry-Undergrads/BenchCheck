@@ -156,6 +156,9 @@ def evidence_search(req: SearchRequest):
         entry["total_results"] = (res.data.get("search_information") or {}).get("total_results")
         for r in organic:
             rec = snippet_record(r, ctx, req.query_id)
+            if rec.get("doi"):
+                from .evidence.bibliography import lookup
+                rec.update(lookup(rec["doi"]))
             rec["cached"] = res.cached
             rec["retrieved_at"] = res.retrieved_at
             sources.append(rec)

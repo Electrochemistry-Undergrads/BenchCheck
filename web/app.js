@@ -392,7 +392,7 @@ function renderMetaForm() {
       control = `<div class="radio-row">${f.options.map(([v, l]) => `<label><input type="radio" name="${f.key}" data-meta="${f.key}" value="${esc(v)}" ${m[f.key] === v ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div>`;
     } else if (f.type === "quantity") {
       const q = m[f.key] || { value: null, unit: f.units[0] };
-      control = `<div class="inline"><input data-qty="${f.key}" type="number" min="0.000000000000001" step="any" value="${esc(q.value ?? "")}">
+      control = `<div class="inline"><input data-qty="${f.key}" type="number" min="0" step="any" value="${esc(q.value ?? "")}">
         <select aria-label="${esc(f.label)} unit" data-qunit="${f.key}">${f.units.map((u) => `<option ${q.unit === u ? "selected" : ""}>${esc(u)}</option>`).join("")}</select></div>`;
     }
     if (f.type === "radio") return `<fieldset class="${cls}"><legend><span>${esc(f.label)} ${missing}</span></legend>${control}</fieldset>`;
@@ -495,6 +495,7 @@ async function runAnalysis({ cycleChange = false } = {}) {
   if (!state.mapping.potential || !state.mapping.current) return showError("Select the potential and current columns.");
   const columns = Object.values(state.mapping).filter(Boolean);
   if (new Set(columns).size !== columns.length) return showError("Potential, current and time must use different columns.");
+  validateInputs();
   const invalid = $$("#meta-form input").find((input) => !input.checkValidity());
   if (invalid) { invalid.reportValidity(); return; }
   const requestId = ++state.analysisRequest;
@@ -547,6 +548,9 @@ function renderResults() {
   banner.textContent = "Simulated data. The uploaded file identifies its data as simulated. These results are not experimental measurements.";
   const notices = [...(a.notices || [])];
   $("#notices").innerHTML = notices.map((n) => `<div class="alert alert-warn">${esc(n)}</div>`).join("");
+  const scaleNote = $("#scale-note");
+  scaleNote.hidden = !a.potential_scale?.converted;
+  scaleNote.textContent = `${a.potential_scale?.label || ""}${a.potential_scale?.note ? `; source: ${a.potential_scale.note}` : ""}`;
   renderCycleButtons();
   renderPlot();
   renderKeyStats();
@@ -841,7 +845,7 @@ function renderReport() {
         <details class="disclose"><summary>Rule and assumptions</summary><ul><li>Rule: ${esc(h.trigger_rule)}</li>
           ${h.assumptions.map((x) => `<li>${esc(x)}</li>`).join("")}${h.background ? `<li>Background: ${esc(h.background)}</li>` : ""}</ul></details>
       </div>`).join("")
-    : `<p class="small">No troubleshooting rule was triggered by the measured features. The data look consistent with a chemically reversible process under the stated assumptions.</p>`;
+    : `<p class="small">No troubleshooting rule was triggered by the measured features. Review the data-quality flags and stated assumptions before interpreting reversibility.</p>`;
   const considered = r.considered.length
     ? `<details class="disclose"><summary>Also considered, not indicated (${r.considered.length})</summary><ul>${r.considered.map((c) => `<li><strong>${esc(c.title)}</strong>: ${esc(c.reason)}</li>`).join("")}</ul></details>` : "";
   const nc = r.next_check;
@@ -1096,7 +1100,7 @@ async function openScaleDialog() {
         preview = nextPreview;
         $("#dlg-ok").disabled = !preview.possible;
         $("#scale-preview", dlg).innerHTML = preview.possible
-          ? `<strong>${esc(preview.to_label)}</strong><br>${esc(preview.explanation)}<br>${preview.caveats.map(esc).join("<br>")}`
+          ? `<strong>${esc(preview.to_label)}</strong><br>${esc(preview.explanation)}<br>${preview.caveats.map(esc).join("<br>")}${preview.note ? `<br>Source: ${esc(preview.note)}` : ""}`
           : esc(preview.reason);
       };
       dlg.querySelectorAll("select,input").forEach((el) => el.addEventListener("input", update));
@@ -1158,7 +1162,7 @@ function exportReport(kind) {
   if (kind === "json") {
     const { data, ...analysis } = state.analysis;
     const { markdown, html, ...report } = r;
-    download(`${base}.json`, JSON.stringify({ report, analysis, evidence: { mode: state.evidence.mode, log: state.evidence.log, sources: state.evidence.sources } }, null, 2), "application/json");
+    download(`${base}.json`, JSON.stringify({ report, analysis, evidence: state.evidence.outdated ? { mode: "outdated", log: [], sources: [], message: "Evidence from older settings excluded." } : { mode: state.evidence.mode, log: state.evidence.log, sources: state.evidence.sources } }, null, 2), "application/json");
   }
 }
 
@@ -1176,7 +1180,7 @@ function restoreControl(selector) { if (selector) $(selector)?.focus({ preventSc
 function numericAttrs(key) {
   if (key === "electrons_n") return 'min="1" step="1"';
   if (key === "temperature_c") return 'min="-273.149999" step="any"';
-  if (["electrode_area_cm2", "active_mass_mg", "diffusion_coefficient_cm2_s"].includes(key)) return 'min="0.000000000000001" step="any"';
+  if (["electrode_area_cm2", "active_mass_mg", "diffusion_coefficient_cm2_s"].includes(key)) return 'min="0" step="any"';
   return 'step="any"';
 }
 function headerHasUnit(name) { return /(?:\([^)]*\)|\[[^\]]*\]|\/(?:m?V|[munpµ]?A)(?:\/cm2)?)$/.test(name || ""); }
@@ -1185,7 +1189,20 @@ function draftDirty() {
   const comparable = (config) => { const copy = structuredClone(config); delete copy.selected_cycle; return JSON.stringify(copy); };
   return comparable(buildConfig()) !== comparable(state.appliedConfig);
 }
+function validateInputs() {
+  const positive = new Set(["electrode_area_cm2", "active_mass_mg", "diffusion_coefficient_cm2_s"]);
+  $$("#meta-form input").forEach((input) => {
+    input.setCustomValidity("");
+    if ((input.dataset.qty || positive.has(input.dataset.meta)) && input.value !== "" && Number(input.value) <= 0) input.setCustomValidity("Enter a positive value.");
+    const invalid = !input.validity.valid;
+    input.setAttribute("aria-invalid", String(invalid));
+    let message = input.closest(".field").querySelector(".field-error");
+    if (invalid && !message) { message = document.createElement("span"); message.className = "field-error"; message.setAttribute("role", "alert"); input.closest(".field").append(message); }
+    if (message) { message.hidden = !invalid; message.textContent = invalid ? input.validationMessage : ""; }
+  });
+}
 function updateDraft() {
+  validateInputs();
   const dirty = draftDirty();
   let banner = $("#draft-warning");
   if (!banner) { banner = document.createElement("div"); banner.id = "draft-warning"; banner.className = "alert alert-warn"; banner.setAttribute("role", "status"); $("#results").prepend(banner); }

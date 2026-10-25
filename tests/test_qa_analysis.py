@@ -60,3 +60,11 @@ def test_plot_decimation_preserves_extrema_and_peak_indices():
     for role in ('forward','return'):
         for peak in reduced['selected'][role]['peaks']:
             assert reduced['data']['E'][peak['index']]==pytest.approx(peak['potential'])
+
+
+def test_geometric_per_cycle_fade():
+    from benchcheck.cv.analysis import _trends
+    cycles=[]
+    for number,height in enumerate((1.,.5,.25),1):
+        cycles.append({'number':number,'complete':True,'forward':{'peaks':[{'label':'A1','height':height,'potential':.5}]},'pairs':[],'charge_ratio':1,'main_forward_peak':'A1'})
+    assert _trends(cycles,cycles[0])['per_cycle_pct']==pytest.approx(-50)

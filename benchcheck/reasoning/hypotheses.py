@@ -277,8 +277,9 @@ def material_search_token(material_text: str | None) -> str | None:
 def summarize(analysis: dict) -> dict:
     sel = analysis.get("selected") or {}
     meta = analysis.get("metadata") or {}
-    pairs = sel.get("pairs") or []
-    main = pairs[sel["main_pair"]] if sel.get("main_pair") is not None and sel["main_pair"] < len(pairs) else None
+    near = {p["label"] for role in ("forward", "return") for p in (sel.get(role) or {}).get("peaks", []) if p.get("near_vertex")}
+    pairs = [p for p in (sel.get("pairs") or []) if p["forward"] not in near and p["return"] not in near]
+    main = next((p for p in pairs if p["forward"] == sel.get("main_forward_peak")), None)
     ratios = [p["height_ratio"] for p in pairs if p.get("height_ratio") is not None]
     nich = [p["nicholson_ratio"] for p in pairs if p.get("nicholson_ratio") is not None]
     fwd, ret = sel.get("forward") or {}, sel.get("return") or {}
@@ -296,7 +297,7 @@ def summarize(analysis: dict) -> dict:
         "charge_ratio": sel.get("charge_ratio"),
         "forward": fwd,
         "return": ret,
-        "unpaired_forward": sel.get("unpaired_forward") or [],
+        "unpaired_forward": [p for p in (sel.get("unpaired_forward") or []) if p not in near],
         "main_forward_peak": sel.get("main_forward_peak"),
         "trends": analysis.get("trends"),
         "quality_codes": [q["code"] for q in analysis.get("quality", [])],
@@ -326,7 +327,12 @@ def _randles_sevcik(f: dict) -> dict | None:
     molar = conc["value"] * {"M": 1., "mol/L": 1., "mM": 1e-3, "mmol/L": 1e-3, "uM": 1e-6, "µM": 1e-6, "μM": 1e-6, "nM": 1e-9}[unit]
     n = meta.get("electrons_n") or 1
     t_k = (meta.get("temperature_c") if meta.get("temperature_c") is not None else 25.0) + 273.15
-    expected = 0.4463 * n * FARADAY * area * (molar * 1e-3) * math.sqrt(n * FARADAY * v * d / (GAS_CONSTANT * t_k))
+    try:
+        expected = 0.4463 * n * FARADAY * area * (molar * 1e-3) * math.sqrt(n * FARADAY * v * d / (GAS_CONSTANT * t_k))
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    if not math.isfinite(expected) or expected <= 0:
+        return None
     peak = next((p for p in f["forward"].get("peaks", []) if p["label"] == f["main_forward_peak"]), None)
     if not peak:
         return None
@@ -354,6 +360,9 @@ def evaluate(analysis: dict) -> list[dict]:
             "triggered": bool(triggered), "observations": observations if triggered else [],
             "not_triggered_reason": None if triggered else reason,
         }
+        if rule_id == "kinetic_limitation" and ptype == "dissolved_species":
+            electrons = f["metadata"].get("electrons_n") or 1
+            d["trigger_rule"] = f"Dissolved-species ΔEp > 80/n mV ({80/electrons:g} mV for n = {electrons})."
         if extra:
             d.update(extra)
         out.append(d)
@@ -382,7 +391,7 @@ def evaluate(analysis: dict) -> list[dict]:
 
     # Irreversible loss (electrode materials)
     obs, trig = [], False
-    if f["charge_ratio"] is not None and f["charge_ratio"] < th["charge_ratio_low"]:
+    if any(not p.get("near_vertex") for p in f["forward"].get("peaks", [])) and f["charge_ratio"] is not None and f["charge_ratio"] < th["charge_ratio_low"]:
         trig = True
         obs.append(f"Return/forward charge ratio {f['charge_ratio']:.2f} (< {th['charge_ratio_low']}).")
     if f["min_ratio"] is not None and f["min_ratio"] < th["ratio_low"]:
