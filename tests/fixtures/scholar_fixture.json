@@ -1,0 +1,39 @@
+{
+  "_fixture_note": "Synthetic test fixture shaped like a SerpApi Google Scholar response. NOT real search results.",
+  "search_metadata": {
+    "id": "fixture-search-0001",
+    "status": "Success",
+    "created_at": "2026-01-01 00:00:00 UTC",
+    "google_scholar_url": "https://scholar.google.com/scholar?q=fixture"
+  },
+  "search_parameters": {"engine": "google_scholar", "q": "LiMn2O4 aqueous LiCl oxygen evolution side reaction"},
+  "organic_results": [
+    {
+      "position": 0,
+      "title": "[TEST FIXTURE] Spinel LiMn2O4 electrodes in aqueous LiCl: side reactions at high potential",
+      "result_id": "fixtureA",
+      "link": "https://example.org/fixture/paper-a",
+      "snippet": "Cyclic voltammetry of LiMn2O4 in 1 M LiCl at 1 mV s−1 versus Ag/AgCl shows two pairs of redox peaks; oxygen evolution becomes significant above 1.1 V …",
+      "publication_info": {"summary": "A Author, B Author - Journal of Fixture Electrochemistry, 2021 - example.org"},
+      "resources": [{"title": "example.org", "file_format": "PDF", "link": "https://example.org/fixture/paper-a.pdf"}],
+      "inline_links": {"cited_by": {"total": 42}}
+    },
+    {
+      "position": 1,
+      "title": "[TEST FIXTURE] LiMn2O4 cathodes in carbonate electrolytes",
+      "result_id": "fixtureB",
+      "link": "https://example.org/fixture/paper-b",
+      "snippet": "LiMn2O4 in 1 M LiPF6 EC/DMC cycled between 3.5 and 4.3 V vs. Li/Li+ at 0.1 mV s−1 shows manganese dissolution and capacity fading …",
+      "publication_info": {"summary": "C Author - Fixture Power Sources, 2015 - example.org"},
+      "inline_links": {"cited_by": {"total": 7}}
+    },
+    {
+      "position": 2,
+      "title": "[TEST FIXTURE] A book about electrodes",
+      "result_id": "fixtureC",
+      "link": "https://books.google.com/books?id=fixture",
+      "snippet": "General electrochemistry text.",
+      "publication_info": {"summary": "D Author - 2010 - books.google.com"}
+    }
+  ]
+}

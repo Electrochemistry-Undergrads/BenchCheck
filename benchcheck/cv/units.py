@@ -109,9 +109,10 @@ def fmt_sig(value: float | None, sig: int = 3) -> str:
         return "n/a"
     if value == 0:
         return "0"
-    digits = sig - int(math.floor(math.log10(abs(value)))) - 1
+    rounded = float(f"{value:.{sig}g}")  # round first so 0.99999 becomes 1.00, not 1.000
+    digits = sig - int(math.floor(math.log10(abs(rounded)))) - 1
     digits = max(0, min(digits, 8))
-    return f"{value:.{digits}f}"
+    return f"{rounded:.{digits}f}"
 
 
 def fmt_current(value_base: float | None, unit: str, scale: float, signed: bool = True) -> str:

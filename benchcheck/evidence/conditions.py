@@ -440,8 +440,10 @@ def applicability(rows: list[dict]) -> dict:
         level = "condition-matched"
     elif material["status"] in ("match", "related") and solvent["status"] != "differs":
         level = "partially matched"
-    else:
+    elif material["status"] == "differs" or solvent["status"] == "differs" or differs:
         level = "different conditions"
+    else:
+        level = "conditions not stated"
     return {
         "level": level,
         "matches": matches,

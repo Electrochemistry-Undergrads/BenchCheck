@@ -24,7 +24,6 @@ _ABBREVIATIONS = (
 )
 
 _SENTENCE_END = re.compile(r"[.!?](?=\s+[\"'(\[]?[A-Z0-9λ])")
-_BLOCK_SPLIT = re.compile(r"\n\s*\n|\n(?=#{1,6}\s)|\n(?=[-*]\s)")
 
 
 def normalize(text: str) -> str:
@@ -37,13 +36,40 @@ def collapse_ws(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+_HEADING_LINE = re.compile(r"^\s*(?:#{1,6}\s+.*|(?:\d+(?:\.\d+)*\.?\s+)?[A-Z][^.!?]{0,70})\s*$")
+
+
+def is_heading(line: str) -> bool:
+    """Markdown headings and short title-like lines without sentence punctuation."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if stripped.startswith("#"):
+        return True
+    return len(stripped) <= 72 and not stripped.endswith((".", ":", ";", ",")) and bool(_HEADING_LINE.match(stripped)) \
+        and len(stripped.split()) <= 8
+
+
 def blocks(text: str) -> list[tuple[int, int]]:
-    """Paragraph-like blocks (spans) separated by blank lines, headings or list items."""
-    spans, start = [], 0
-    for m in _BLOCK_SPLIT.finditer(text):
-        spans.append((start, m.start()))
-        start = m.end()
-    spans.append((start, len(text)))
+    """Paragraph-like spans of text. Blank lines and heading lines end a block; headings are excluded."""
+    spans: list[tuple[int, int]] = []
+    start = None
+    pos = 0
+    for line in text.splitlines(keepends=True):
+        a, b = pos, pos + len(line)
+        pos = b
+        body = line.strip()
+        if not body or is_heading(line) or body.startswith(("- ", "* ")):
+            if start is not None:
+                spans.append((start, a))
+                start = None
+            if body.startswith(("- ", "* ")):
+                spans.append((a, b))  # list items stand alone
+            continue
+        if start is None:
+            start = a
+    if start is not None:
+        spans.append((start, pos))
     return [(a, b) for a, b in spans if text[a:b].strip()]
 
 

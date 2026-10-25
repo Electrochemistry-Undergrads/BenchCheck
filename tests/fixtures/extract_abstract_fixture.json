@@ -1,0 +1,10 @@
+{
+  "_fixture_note": "Synthetic test fixture shaped like a SerpApi Extract API response. NOT real page content.",
+  "search_metadata": {"id": "fixture-extract-0002", "status": "Success"},
+  "page_information": {"title": "[TEST FIXTURE] LiMn2O4 cathodes in carbonate electrolytes"},
+  "meta_tags": [
+    {"name": "citation_abstract", "content": "This fixture abstract reports LiMn2O4 cathodes in 1 M LiPF6 in EC/DMC cycled versus Li/Li+ at 0.1 mV s-1. Manganese dissolution and Jahn-Teller distortion contributed to capacity fading during cycling at elevated temperature, according to this synthetic test text."},
+    {"name": "description", "content": "short"}
+  ],
+  "text_content": {"full": "Sign in to access the full article. Purchase PDF.", "markdown": ""}
+}

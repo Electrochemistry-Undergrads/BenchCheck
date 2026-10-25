@@ -89,6 +89,7 @@ class SearchRequest(BaseModel):
     purpose: str | None = None
     hypothesis_ids: list[str] = []
     context: EvidenceContext
+    prefer_cache: bool = False
 
 
 class SelectRequest(BaseModel):
@@ -99,6 +100,7 @@ class SelectRequest(BaseModel):
 class ExtractRequest(BaseModel):
     source: dict
     context: EvidenceContext
+    prefer_cache: bool = False
 
 
 class ReportRequest(BaseModel):

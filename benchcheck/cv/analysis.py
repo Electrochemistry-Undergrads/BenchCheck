@@ -393,7 +393,7 @@ def _observations(selected, trends, density, scale, scan_rate_entered, measured_
                 f"{fmt_potential(fwd['e_start'])} to {fmt_potential(fwd['e_end'])}")
         if ret:
             desc += f", return sweep back to {fmt_potential(ret['e_end'])}"
-        obs.append({"id": "cycle", "text": desc + f" ({ref})."})
+        obs.append({"id": "cycle", "text": desc + f"; potentials in {ref}."})
     for key, name in (("forward", "Forward"), ("return", "Return")):
         s = selected.get(key)
         if not s:
