@@ -8,6 +8,7 @@ reports can be traced back to the exact file analyzed.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -85,9 +86,18 @@ class ParsedTable:
 
 
 def decode_bytes(raw: bytes) -> tuple[str, str]:
+    if raw.startswith((b"\x1f\x8b", b"PK\x03\x04")):
+        raise ParseError("Compressed file: unzip first, then upload the text data.")
+    for bom, enc in ((b"\xff\xfe\x00\x00", "utf-32"), (b"\x00\x00\xfe\xff", "utf-32"),
+                     (b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16")):
+        if raw.startswith(bom):
+            try:
+                return raw.decode(enc).lstrip("\x00"), enc
+            except UnicodeDecodeError as exc:
+                raise ParseError("The Unicode text file is incomplete or damaged.") from exc
     for enc in ("utf-8-sig", "cp1252", "latin-1"):
         try:
-            return raw.decode(enc), enc
+            return raw.decode(enc).lstrip("\x00"), enc
         except UnicodeDecodeError:
             continue
     raise ParseError("Could not decode the file as text.")
@@ -95,79 +105,71 @@ def decode_bytes(raw: bytes) -> tuple[str, str]:
 
 def _split(line: str, delim: str) -> list[str]:
     if delim == "whitespace":
-        parts = line.split()
-    else:
-        parts = line.split(delim)
-        if len(parts) > 1 and parts[-1].strip() == "":
-            parts = parts[:-1]  # tolerate one trailing delimiter
-    return [p.strip().strip('"').strip("'").strip() for p in parts]
+        return line.split()
+    try:
+        return [p.strip() for p in next(csv.reader([line], delimiter=delim, skipinitialspace=True))]
+    except csv.Error:
+        return []
+
+
+def _numeric_token(token: str, decimal: str) -> str:
+    token = token.strip().translate(str.maketrans({"−": "-", "–": "-", "﹣": "-", "D": "e", "d": "e"}))
+    if decimal == ",":
+        token = token.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})+(?:\.\d*)?(?:[eE][+-]?\d+)?", token):
+        token = token.replace(",", "")
+    return token
 
 
 def _is_number(token: str, decimal: str) -> bool:
-    if not token:
-        return False
-    return bool((_NUM_COMMA if decimal == "," else _NUM_DOT).match(token))
+    return bool(_NUM_DOT.fullmatch(_numeric_token(token, decimal)))
 
 
 def _to_float(token: str, decimal: str) -> float:
     if not _is_number(token, decimal):
         return float("nan")
-    if decimal == ",":
-        token = token.replace(",", ".")
     try:
-        return float(token)
+        value = float(_numeric_token(token, decimal))
+        return value if np.isfinite(value) else float("nan")
     except ValueError:
         return float("nan")
 
 
-def _signature(fields: list[str], decimal: str) -> tuple[int, tuple[bool, ...]] | None:
-    flags = tuple(_is_number(f, decimal) for f in fields)
-    if sum(flags) < 2:
-        return None
-    return len(fields), flags
-
-
-def _best_block(lines: list[str], delim: str, decimal: str) -> tuple[int, int, tuple] | None:
-    """Longest run of consecutive non-blank lines sharing one numeric signature."""
-    best = None  # (length, start, signature)
-    run_start, run_len, run_sig = -1, 0, None
-    for idx, line in enumerate(lines):
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        sig = _signature(_split(line, delim), decimal)
-        if sig is not None and sig == run_sig:
-            run_len += 1
-        else:
-            if run_sig is not None and (best is None or run_len > best[0]):
-                best = (run_len, run_start, run_sig)
-            run_start, run_len, run_sig = (idx, 1, sig) if sig is not None else (-1, 0, None)
-    if run_sig is not None and (best is None or run_len > best[0]):
-        best = (run_len, run_start, run_sig)
-    return best
-
-
 def _detect_format(lines: list[str]) -> tuple[str, str, int, tuple]:
+    # Score the whole sample, so one damaged cell never moves the data start.
     sample = lines[:_DETECTION_SAMPLE_LINES]
-    best = None  # (score tuple, delim, decimal, start, signature)
-    for delim, decimal in _CANDIDATES:
-        if delim not in ("whitespace",) and not any(delim in line for line in sample[:200] + sample[-50:]):
-            continue
-        block = _best_block(sample, delim, decimal)
-        if block is None:
-            continue
-        length, start, sig = block
-        n_fields, flags = sig
-        numeric_fraction = sum(flags) / n_fields
-        score = (length * numeric_fraction, sum(flags))
-        if best is None or score > best[0]:
-            best = (score, delim, decimal, start, sig)
-    if best is None or best[0][0] < 3:
-        raise ParseError(
-            "Could not find a block of at least 3 numeric rows with 2 or more columns. "
-            "Export the data as CSV/TXT with one row per data point."
-        )
-    _, delim, decimal, start, sig = best
-    return delim, decimal, start, sig
+    best = None
+    for delim, decimal in _CANDIDATES + [(",", ",")]:
+        groups = {}
+        for idx, line in enumerate(sample):
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            fields = _split(line, delim)
+            flags = tuple(_is_number(f, decimal) for f in fields)
+            if sum(flags) >= 2:
+                groups.setdefault(len(fields), []).append((idx, flags, fields))
+        for width, rows in groups.items():
+            if len(rows) < 3:
+                continue
+            score = sum(sum(flags) / max(1, sum(bool(f) for f in fs)) for _, flags, fs in rows)
+            # A decimal-comma candidate must actually contain decimal commas.
+            if decimal == "," and not any("," in f for _, _, fs in rows for f in fs):
+                continue
+            # Prefer a matching textual header and consistent field counts.
+            start = rows[0][0]
+            header, _ = _header_for(lines, start, delim, width, decimal)
+            if header is not None:
+                score *= 1.01
+            if decimal == "," and any("," in f for _, _, fs in rows for f in fs) and not any("." in f for _, _, fs in rows for f in fs):
+                score *= 1.005
+            rank = (score, int(header is not None), sum(rows[0][1]))
+            if best is None or rank > best[0]:
+                best = (rank, delim, decimal, start, (width, rows[0][1]))
+    if best is None:
+        if len(lines) > 1500:
+            raise ParseError("No numeric data found in the first 3000 lines; shorten the instrument preamble (over 1500 lines).")
+        raise ParseError("Could not find at least 3 numeric rows with 2 or more columns. Export CSV/TXT with one row per data point.")
+    return best[1:]
 
 
 def _looks_like_units_row(fields: list[str]) -> bool:
@@ -241,6 +243,7 @@ def parse_table(raw: bytes, filename: str = "upload.csv") -> ParsedTable:
 
     rows = []
     malformed = 0
+    expected_numeric = np.array(_flags, dtype=bool)
     for line in lines[start:]:
         if not line.strip() or line.lstrip().startswith("#"):
             continue
@@ -249,7 +252,10 @@ def parse_table(raw: bytes, filename: str = "upload.csv") -> ParsedTable:
             malformed += 1
             rows.append([float("nan")] * n_fields)
             continue
-        rows.append([_to_float(f, decimal) for f in fields])
+        converted = [_to_float(f, decimal) for f in fields]
+        if any(expected_numeric[j] and fields[j] and not np.isfinite(v) for j, v in enumerate(converted)):
+            malformed += 1
+        rows.append(converted)
     data = np.array(rows, dtype=float) if rows else np.empty((0, n_fields))
 
     preamble_end = header_line if header_line is not None else start
@@ -259,9 +265,9 @@ def parse_table(raw: bytes, filename: str = "upload.csv") -> ParsedTable:
     if decimal == ",":
         notes.append("Decimal commas detected and converted.")
     if malformed:
-        notes.append(f"{malformed} row(s) had an unexpected number of fields and were ignored.")
+        notes.append(f"{malformed} row(s) contain malformed numeric cells or unexpected field counts; only rows with invalid mapped values are excluded during analysis.")
     return ParsedTable(
-        filename=filename,
+        filename=filename[:240],
         sha256=sha,
         size_bytes=len(raw),
         encoding=encoding,
@@ -313,7 +319,7 @@ _CURRENT_HINTS = [
     (r"^j$|current density", 8),
 ]
 _TIME_HINTS = [(r"\btime\b", 9), (r"^t$|^t_s$", 7), (r"elapsed", 8)]
-_EXCLUDE = re.compile(r"cycle|scan\s*(no|number|#)|loop|segment|charge|capacity|step|index|point|^q$|^z|freq|phase")
+_EXCLUDE = re.compile(r"cycle|scan\s*(no|number|#)|loop|segment|charge|capacity|step|index|point|^pt$|^ns$|^q$|^z|freq|phase")
 
 
 def _score(name: str, hints) -> int:
@@ -340,9 +346,14 @@ def suggest_mapping(table: ParsedTable) -> dict:
     cols = table.columns
     result: dict[str, dict | None] = {"potential": None, "current": None, "time": None}
     used: set[str] = set()
+    eligible = [c for j, c in enumerate(cols) if table.n_rows and np.isfinite(table.data[:, j]).mean() >= .5
+                and not _EXCLUDE.search(_base_name(c))]
+    for c in cols:
+        if c not in eligible and not np.isfinite(table.column(c)).any():
+            table.notes.append(f"Column {c!r} has no numeric data and cannot be mapped.")
 
     def pick(role: str, hints) -> None:
-        scored = sorted(((_score(c, hints), c) for c in cols if c not in used), reverse=True)
+        scored = sorted(((_score(c, hints), c) for c in eligible if c not in used), reverse=True)
         if scored and scored[0][0] > 0:
             name = scored[0][1]
             used.add(name)
@@ -364,13 +375,16 @@ def suggest_mapping(table: ParsedTable) -> dict:
             "regularity": _step_regularity(v),
         }
     if result["time"] is None:
-        for name in cols:
-            if name not in used and stats[name]["monotonic"] and stats[name]["regularity"] < 0.5:
+        for name in eligible:
+            v = table.column(name)
+            finite = v[np.isfinite(v)]
+            is_index = finite.size > 2 and np.all(finite == np.floor(finite)) and np.all(np.diff(finite) == 1)
+            if not is_index and name not in used and stats[name]["monotonic"] and stats[name]["regularity"] < 0.5:
                 used.add(name)
                 result["time"] = {"column": name, "unit": unit_from_header(name), "basis": "monotonic column"}
                 break
     if result["potential"] is None:
-        options = [n for n in cols if n not in used and not stats[n]["monotonic"] and stats[n]["reversals"] >= 1]
+        options = [n for n in eligible if n not in used and not stats[n]["monotonic"] and stats[n]["reversals"] >= 1]
         options.sort(key=lambda n: stats[n]["regularity"])
         if options:
             used.add(options[0])
@@ -379,7 +393,7 @@ def suggest_mapping(table: ParsedTable) -> dict:
                 "basis": "triangular sweep pattern",
             }
     if result["current"] is None:
-        options = [n for n in cols if n not in used and not stats[n]["monotonic"]]
+        options = [n for n in eligible if n not in used and not stats[n]["monotonic"]]
         if options:
             used.add(options[0])
             result["current"] = {"column": options[0], "unit": unit_from_header(options[0]), "basis": "remaining column"}
@@ -393,8 +407,8 @@ def suggest_mapping(table: ParsedTable) -> dict:
         "preview_rows": preview,
         "column_stats": {
             name: {
-                "min": _finite_or_none(np.nanmin(table.data[:, i])) if table.n_rows else None,
-                "max": _finite_or_none(np.nanmax(table.data[:, i])) if table.n_rows else None,
+                "min": _finite_or_none(np.nanmin(table.data[:, i])) if np.isfinite(table.data[:, i]).any() else None,
+                "max": _finite_or_none(np.nanmax(table.data[:, i])) if np.isfinite(table.data[:, i]).any() else None,
                 "n_numeric": int(np.isfinite(table.data[:, i]).sum()),
                 "monotonic": stats[name]["monotonic"],
             }
