@@ -1,0 +1,102 @@
+{
+  "id": "synthetic_lmo_clear_return",
+  "title": "Synthetic CV · clear return peak",
+  "synthetic": true,
+  "summary": "SYNTHETIC data. Two-step insertion-electrode model scanned 0.30 → 1.10 V vs Ag/AgCl at 1 mV/s for 3 cycles. The return (cathodic) peaks mirror the forward (anodic) peaks.",
+  "file": "synthetic_lmo_clear_return.csv",
+  "mapping": {
+    "potential": "Ewe/V",
+    "current": "<I>/mA",
+    "time": "time/s"
+  },
+  "units": {
+    "potential": "V",
+    "current": "mA",
+    "time": "s"
+  },
+  "current_convention": "iupac",
+  "metadata": {
+    "electrode_material": "LiMn2O4 composite (LMO / carbon black / PVDF)",
+    "process_type": "electrode_material",
+    "electrolyte": "1 M LiCl",
+    "solvent": "aqueous",
+    "reference_electrode": "ag_agcl_3m_kcl",
+    "scan_rate": {
+      "value": 1.0,
+      "unit": "mV/s"
+    },
+    "active_mass_mg": 0.7,
+    "electrode_area_cm2": null,
+    "temperature_c": 25.0,
+    "ph": null,
+    "counter_electrode": "Pt wire",
+    "ir_compensation": null
+  },
+  "intentionally_missing": [
+    "electrode_area_cm2",
+    "ph",
+    "ir_compensation"
+  ],
+  "generator": {
+    "script": "scripts/make_examples.py",
+    "model": "benchcheck.synth.thinfilm (two Butler–Volmer sites + double layer + side current + loss term)",
+    "parameters": {
+      "sites": [
+        {
+          "e0": 0.8,
+          "charge_c": 0.15,
+          "k0": 0.02,
+          "alpha": 0.5
+        },
+        {
+          "e0": 0.95,
+          "charge_c": 0.15,
+          "k0": 0.02,
+          "alpha": 0.5
+        }
+      ],
+      "e_low": 0.3,
+      "e_high": 1.1,
+      "e_start": 0.3,
+      "scan_rate": 0.001,
+      "n_cycles": 3,
+      "step_v": 0.001,
+      "temperature_c": 25.0,
+      "c_dl": 0.04,
+      "tau_dl": 2.0,
+      "i0_side": 0.0002,
+      "e_side": 1.2,
+      "b_side": 0.05,
+      "k_loss0": 0.002,
+      "e_loss": 1.2,
+      "b_loss": 0.04,
+      "noise_a": 4e-06,
+      "seed": 7,
+      "notes": []
+    }
+  },
+  "ground_truth": {
+    "per_cycle": [
+      {
+        "cycle": 1,
+        "faradaic_ratio_C1_A1": 0.96,
+        "faradaic_ratio_C2_A2": 1.015,
+        "faradaic_charge_ratio": 0.987
+      },
+      {
+        "cycle": 2,
+        "faradaic_ratio_C1_A1": 0.96,
+        "faradaic_ratio_C2_A2": 1.015,
+        "faradaic_charge_ratio": 0.987
+      },
+      {
+        "cycle": 3,
+        "faradaic_ratio_C1_A1": 0.96,
+        "faradaic_ratio_C2_A2": 1.015,
+        "faradaic_charge_ratio": 0.987
+      }
+    ],
+    "side_current_at_upper_vertex_mA": 0.0271,
+    "electroactive_charge_lost_after_run_fraction": 0.038
+  }
+}

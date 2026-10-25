@@ -1,0 +1,24 @@
+# Secrets: never commit API keys
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Local, unreviewed SerpApi cache (the committed demo cache lives in data/cache/demo/)
+data/cache/live/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Scratch output
+out/
+screenshots/
