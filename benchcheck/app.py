@@ -7,14 +7,19 @@ from __future__ import annotations
 
 import json
 import re
+import os
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
+from fastapi.exceptions import RequestValidationError
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from .http_hygiene import HTTPHygiene
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from . import __version__
+from . import __version__, sessions
+from .cv.plot_data import decimate
 from .cv.analysis import AnalysisError, analyze
 from .cv.parsing import MAX_BYTES, ParseError, parse_table, suggest_mapping
 from .cv.reference import REFERENCE_ELECTRODES, plan_conversion
@@ -37,6 +42,8 @@ EXAMPLES_DIR = PROJECT_ROOT / "examples"
 _EXAMPLE_FILE = re.compile(r"^[a-z0-9_]+\.(csv|meta\.json)$")
 
 app = FastAPI(title="BenchCheck", version=__version__, docs_url="/api/docs", redoc_url=None)
+app.add_middleware(HTTPHygiene)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=os.environ.get("BENCHCHECK_ALLOWED_HOSTS", "127.0.0.1,localhost,[::1],testserver").split(","))
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 
@@ -95,7 +102,9 @@ def examples():
 
 
 @app.post("/api/inspect")
-def inspect(file: UploadFile = File(...)):
+async def inspect(request: Request, file: UploadFile = File(...)):
+    if len((await request.form()).getlist("file")) != 1:
+        raise HTTPException(422, "Provide exactly one file part.")
     raw = _read_upload(file)
     try:
         table = parse_table(raw, file.filename or "upload")
@@ -107,20 +116,13 @@ def inspect(file: UploadFile = File(...)):
 @app.post("/api/conversion-preview")
 def conversion_preview(req: ConversionPreviewRequest):
     """Describe (without applying) a reference conversion so the user can confirm it."""
-    result = plan_conversion(req.from_, req.target, req.ph, req.temperature_c, req.offset_v, req.description)
-    if result.get("possible"):
-        caveats = result.setdefault("caveats", [])
-        if req.temperature_c is None and (req.target == "RHE" or req.from_ == "rhe"):
-            caveats.append("25 °C assumed for the Nernst slope.")
-        if req.temperature_c is not None and abs(req.temperature_c - 25) > 5:
-            caveats.append("Temperature differs from 25 °C; tabulated reference offsets may be inaccurate.")
-        if req.ph is not None and not -2 <= req.ph <= 16:
-            caveats.append("pH is outside the usual range −2 to 16; check the value.")
-    return result
+    return plan_conversion(req.from_, req.target, req.ph, req.temperature_c, req.offset_v, req.description)
 
 
 @app.post("/api/analyze")
-def analyze_endpoint(file: UploadFile = File(...), config: str = Form(...)):
+async def analyze_endpoint(request: Request, file: UploadFile = File(...), config: str = Form(...), full_resolution: bool = False):
+    if len((await request.form()).getlist("file")) != 1:
+        raise HTTPException(422, "Provide exactly one file part.")
     raw = _read_upload(file)
     try:
         cfg = AnalysisConfig.model_validate_json(config)
@@ -135,12 +137,17 @@ def analyze_endpoint(file: UploadFile = File(...), config: str = Form(...)):
     result["hypotheses"] = hyps
     result["evidence_plan"] = evidence_plan(result, hyps, get_settings().max_queries)
     result["thresholds"] = THRESHOLDS
-    return result
+    sessions.create(result, cfg.model_dump(exclude={"selected_cycle"}))
+    return result if full_resolution else decimate(result)
 
 
 @app.post("/api/evidence/search")
 def evidence_search(req: SearchRequest):
-    res = _client().scholar(req.query, prefer_cache=req.prefer_cache)
+    session = sessions.get(req.analysis_id)
+    client = _client()
+    sessions.consume(session, "queries", get_settings().max_queries, client.settings.live_enabled)
+    ctx = session.context()
+    res = client.scholar(req.query, prefer_cache=req.prefer_cache)
     entry = res.log_entry(query_id=req.query_id, purpose=req.purpose, kind="scholar_search")
     sources = []
     if res.ok and res.data:
@@ -148,44 +155,78 @@ def evidence_search(req: SearchRequest):
         entry["results_count"] = len(organic)
         entry["total_results"] = (res.data.get("search_information") or {}).get("total_results")
         for r in organic:
-            rec = snippet_record(r, req.context, req.query_id)
+            rec = snippet_record(r, ctx, req.query_id)
             rec["cached"] = res.cached
             rec["retrieved_at"] = res.retrieved_at
             sources.append(rec)
+    with sessions.LOCK:
+        for source in sources:
+            prior = session.sources.get(source["source_id"])
+            session.sources[source["source_id"]] = merge_sources([prior, source])[0] if prior else source
+        session.logs.append(entry)
     return {"log": entry, "sources": sources}
 
 
 @app.post("/api/evidence/select")
 def evidence_select(req: SelectRequest):
-    merged = merge_sources(req.sources)
+    session = sessions.get(req.analysis_id)
+    merged = merge_sources([sessions.source(session, s.source_id) for s in req.sources])
     budget = get_settings().max_extracts
     return {"sources": merged, "extract": select_for_extraction(merged, budget), "budget": budget}
 
 
 @app.post("/api/evidence/extract")
 def evidence_extract(req: ExtractRequest):
-    url = extraction_url(req.source)
+    session = sessions.get(req.analysis_id)
+    source = sessions.source(session, req.source.source_id)
+    selected = select_for_extraction(list(session.sources.values()), get_settings().max_extracts)
+    if source["source_id"] not in {s["source_id"] for s in selected}:
+        raise HTTPException(422, "source_id was not selected for extraction.")
+    client = _client()
+    sessions.consume(session, "extracts", get_settings().max_extracts, client.settings.live_enabled)
+    url = extraction_url(source)
     if not url:
         raise HTTPException(422, "This source has no retrievable link.")
-    res = _client().extract(url, prefer_cache=req.prefer_cache)
+    res = client.extract(url, prefer_cache=req.prefer_cache)
     call_meta = {"via": "SerpApi Extract API", "url": url, "cached": res.cached, "retrieved_at": res.retrieved_at,
                  "error": res.error, "fallback_note": res.fallback_note}
-    updated = extract_record(req.source, res.data if res.ok else None, req.context, call_meta)
+    updated = extract_record(source, res.data if res.ok else None, session.context(), call_meta)
+    if updated.get("doi"):
+        from .evidence.bibliography import lookup
+        updated.update(lookup(updated["doi"]))
     if res.ok:
         updated["cached"] = updated.get("cached", False) or res.cached
-    entry = res.log_entry(kind="extract", source_id=req.source.get("source_id"),
+    entry = res.log_entry(kind="extract", source_id=source["source_id"],
                           classification=(updated.get("content") or {}).get("status"))
+    if updated["content"]["status"] in ("no usable content", "retrieval failed"):
+        entry["ok"] = False
+        entry["status"] = "error"
+        entry["error"] = updated["content"]["reason"]
+    with sessions.LOCK:
+        session.sources[source["source_id"]] = updated
+        session.logs.append(entry)
     return {"log": entry, "source": updated}
 
 
 @app.post("/api/report")
 def report(req: ReportRequest):
     try:
-        return build_report(req.analysis, req.evidence)
+        session = sessions.get(req.analysis_id or req.analysis.get("analysis_id"))
+        logs = list(session.logs)
+        good = [e for e in logs if e.get("ok")]
+        statuses = {"cached" if e.get("cached") else e["status"] for e in good}
+        mode = "live + cached" if {"live", "cached"} <= statuses else "live" if "live" in statuses else "cached" if "cached" in statuses else "unavailable" if logs else "not run"
+        evidence = {"sources": list(session.sources.values()), "log": logs, "mode": mode}
+        return build_report(session.analysis, evidence)
     except (KeyError, TypeError, IndexError, AttributeError, ValueError) as exc:
         raise HTTPException(422, f"The analysis or evidence payload is incomplete ({type(exc).__name__}).") from exc
 
 
 @app.exception_handler(ValueError)
 def value_error_handler(_request, exc: ValueError):
-    return JSONResponse(status_code=422, content={"detail": str(exc)})
+    return JSONResponse(status_code=422, content={"detail": "Invalid experiment settings or data; check the entered fields and units."})
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(_request, exc):
+    return JSONResponse(status_code=422, content={"detail": [{"loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors()]})

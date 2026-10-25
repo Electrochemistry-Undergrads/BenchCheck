@@ -1,0 +1,1 @@
+print(requests.head(B+"/").status_code, requests.head(B+"/api/status").status_code, {k:v for k,v in requests.get(B+"/").headers.items()})

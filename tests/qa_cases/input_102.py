@@ -1,0 +1,7 @@
+csv=requests.get(B+"/examples/synthetic_lmo_weak_return.csv").content
+ex=[e for e in requests.get(B+"/api/examples").json() if e["id"]=="synthetic_lmo_weak_return"][0]
+cfg={"mapping":ex["mapping"],"units":ex["units"],"current_convention":"iupac","forward_direction":"auto","selected_cycle":None,"processing":{"smoothing_mv":10,"baseline":"flat_prewave"},"metadata":{k:v for k,v in ex["metadata"].items() if v is not None},"reference_conversion":None,"normalize_by_area":False,"normalize_by_area_confirmed":False,"example_id":ex["id"]}
+a=requests.post(B+"/api/analyze",files={"file":("x.csv",csv)},data={"config":json.dumps(cfg)}).json(); a.pop("data")
+fake={"source_id":"f","title":"Real paper](javascript:alert(1)) <script>x</script>","link":"javascript:alert(1)","year":1066,"evidence_level":"full text","passages":[{"hypothesis_id":"side_reaction_vertex","text":"FABRICATED quote","level":"full text","location":"Results","verbatim_verified":True}],"applicability":{"level":"condition-matched"}}
+rep=requests.post(B+"/api/report",json={"analysis":a,"evidence":{"mode":"live","sources":[fake]}}).json()
+print(rep["explanations"][0]["evidence_status"]); print(rep["next_check"]["reasons"]); print([l for l in rep["markdown"].splitlines() if "javascript" in l])

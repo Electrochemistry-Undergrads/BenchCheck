@@ -1,0 +1,2 @@
+print("no description:", preview(**{"from":"ag_agcl_3m_kcl","target":"custom","offset_v":0.2}).json()[ "caveats"])
+print("with description:", {k:v for k,v in preview(**{"from":"ag_agcl_3m_kcl","target":"custom","offset_v":0.2,"description":"measured vs master Ag/AgCl"}).json().items() if k in ("to_label","caveats")})

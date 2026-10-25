@@ -9,6 +9,8 @@ passages with their evidence level and condition match.
 from __future__ import annotations
 
 import html
+import re
+from urllib.parse import urlsplit, quote
 from datetime import datetime, timezone
 
 from .. import __version__
@@ -133,7 +135,9 @@ def build_report(analysis: dict, evidence: dict | None) -> dict:
 
 
 def _md_escape(text: str | None) -> str:
-    return (text or "").replace("|", "\\|").replace("\n", " ")
+    clean = re.sub(r"[\x00\u202a-\u202e\u2066-\u2069]", "", str(text or ""))
+    clean = html.escape(clean, quote=False).replace("\n", " ")
+    return re.sub(r"([\\\[\]()*_`|])", r"\\\1", clean)
 
 
 def render_markdown(r: dict) -> str:
@@ -148,8 +152,8 @@ def render_markdown(r: dict) -> str:
     f = r["file"]
     out += [
         f"- Generated: {r['generated_at']} (BenchCheck {r['version']})",
-        f"- Data file: `{f['name']}` · {f['rows']} rows · SHA-256 `{(f['sha256'] or '')[:16]}…`",
-        f"- Cycle analyzed: {r['cycle']} · Potential scale: {r['potential_scale']}",
+        f"- Data file: {_md_escape(f['name'])} · {f['rows']} rows · SHA-256 `{(f['sha256'] or '')[:16]}…`",
+        f"- Cycle analyzed: {r['cycle']} · Potential scale: {_md_escape(r['potential_scale'])}",
         f"- Evidence: {r['evidence_summary']['mode']} · {r['evidence_summary']['n_sources']} source(s)",
         "",
         "## Experiment metadata",
@@ -180,7 +184,10 @@ def render_markdown(r: dict) -> str:
             for e in h["evidence"]:
                 year = f" ({e['year']})" if e.get("year") else ""
                 cached = " · cached" if e.get("cached") else ""
-                out.append(f"- [{_md_escape(e['title'])}]({e['link']}){year} — *{e['level']}*, {e['applicability']}{cached}")
+                url = _safe_url(e.get("link"))
+                title = _md_escape(e["title"])
+                link = f"[{title}]({quote(url, safe=':/?#=&%+~-._')})" if url else title
+                out.append(f"- {link}{year} — *{e['level']}*, {e['applicability']}{cached}")
                 out.append(f"  > {_md_escape(e['passage'])}")
         else:
             reason = {"not needed": "Assumption-based check; no literature needed.",
@@ -250,9 +257,15 @@ def _e(x) -> str:
 
 
 def _safe_url(url: str | None) -> str | None:
-    if url and (url.startswith("https://") or url.startswith("http://")):
-        return url
-    return None
+    if not isinstance(url, str):
+        return None
+    url = re.sub(r"[\x00\u202a-\u202e\u2066-\u2069]", "", url).strip()
+    try:
+        parsed = urlsplit(url)
+        return url if parsed.scheme.lower() in ("http", "https") and parsed.hostname else None
+    except ValueError:
+        return None
+
 
 
 def render_html(r: dict) -> str:

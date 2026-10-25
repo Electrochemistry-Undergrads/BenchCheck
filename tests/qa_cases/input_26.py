@@ -1,0 +1,1 @@
+r=ins(GOOD.encode("utf-16")); print(r.status_code, r.json())

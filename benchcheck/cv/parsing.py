@@ -346,8 +346,12 @@ def suggest_mapping(table: ParsedTable) -> dict:
     cols = table.columns
     result: dict[str, dict | None] = {"potential": None, "current": None, "time": None}
     used: set[str] = set()
+    def index_column(j, c):
+        values = table.data[:, j]
+        values = values[np.isfinite(values)]
+        return c.startswith("Column ") and values.size > 10 and np.all(values == np.floor(values)) and np.mean(np.diff(values) == 1) > .9
     eligible = [c for j, c in enumerate(cols) if table.n_rows and np.isfinite(table.data[:, j]).mean() >= .5
-                and not _EXCLUDE.search(_base_name(c))]
+                and not _EXCLUDE.search(_base_name(c)) and not index_column(j, c)]
     for c in cols:
         if c not in eligible and not np.isfinite(table.column(c)).any():
             table.notes.append(f"Column {c!r} has no numeric data and cannot be mapped.")

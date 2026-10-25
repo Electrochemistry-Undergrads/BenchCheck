@@ -1,0 +1,2 @@
+rows=["time/s;E/V;I/uA"]+[f"{a:.4f};{b:.5f};{c*1e4:,.2f}".replace(",","X").replace(".",",").replace("X",".") for a,b,c in zip(t,E,I)]
+j=ins("\n".join(rows)+"\n").json(); print(j["table"]["delimiter"], j["table"]["columns"], j["preview_rows"][0], j["suggested"]["potential"])

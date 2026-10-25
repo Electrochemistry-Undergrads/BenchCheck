@@ -1,0 +1,1 @@
+r=requests.get(B+"/api/status",headers={"Host":"attacker.example"}); print(r.status_code, r.json()["serpapi_configured"])

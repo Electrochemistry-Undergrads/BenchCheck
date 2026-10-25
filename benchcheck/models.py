@@ -118,21 +118,36 @@ class EvidenceContext(RequestModel):
 
 
 class SearchRequest(RequestModel):
+    analysis_id: str | None = None
     query_id: str
-    query: str
+    query: str = Field(min_length=1, max_length=300)
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def trim_query(cls, value):
+        return value.strip() if isinstance(value, str) else value
     purpose: str | None = None
     hypothesis_ids: list[str] = []
     context: EvidenceContext
     prefer_cache: bool = False
 
 
+class SourceInput(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    source_id: str = Field(min_length=1, max_length=200)
+    title: str = Field(max_length=2000)
+    link: str | None = Field(None, max_length=3000)
+
+
 class SelectRequest(RequestModel):
-    sources: list[dict]
+    analysis_id: str | None = None
+    sources: list[SourceInput] = Field(max_length=100)
     context: EvidenceContext
 
 
 class ExtractRequest(RequestModel):
-    source: dict
+    analysis_id: str | None = None
+    source: SourceInput
     context: EvidenceContext
     prefer_cache: bool = False
 
@@ -155,5 +170,6 @@ class ConversionPreviewRequest(RequestModel):
 
 
 class ReportRequest(RequestModel):
-    analysis: dict
+    analysis_id: str | None = None
+    analysis: dict = {}
     evidence: dict = {}

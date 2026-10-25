@@ -59,7 +59,7 @@ def nernst_slope(temperature_c: float | None) -> float:
     return math.log(10) * GAS_CONSTANT * t_k / FARADAY
 
 
-def plan_conversion(
+def _plan_conversion(
     from_key: str | None,
     target: str,
     ph: float | None = None,
@@ -88,7 +88,8 @@ def plan_conversion(
             "offset_v": float(custom_offset_v),
             "to_label": f"custom scale ({from_label} {custom_offset_v:+.3f} V)",
             "explanation": f"E_new = E({from_label}) {custom_offset_v:+.3f} V (user-supplied offset).",
-            "caveats": ["Offset supplied by the user; BenchCheck cannot verify it."] + ([custom_description] if custom_description else []),
+            "caveats": ["Offset supplied by the user; BenchCheck cannot verify it."],
+            "note": custom_description,
         }
     if info is None:
         return {"possible": False, "reason": "Select the reference electrode used before converting."}
@@ -126,3 +127,16 @@ def plan_conversion(
             "caveats": [TABULATED_NOTE, "Assumes the stated pH and temperature."],
         }
     return {"possible": False, "reason": f"Unknown target scale {target!r}."}
+
+
+def plan_conversion(from_key, target, ph=None, temperature_c=None, custom_offset_v=None, custom_description=None):
+    result = _plan_conversion(from_key, target, ph, temperature_c, custom_offset_v, custom_description)
+    if result.get("possible"):
+        caveats = result.setdefault("caveats", [])
+        if temperature_c is None and (target == "RHE" or from_key == "rhe"):
+            caveats.append("25 °C assumed for the Nernst slope.")
+        if temperature_c is not None and abs(temperature_c-25)>5 and from_key not in ("she","rhe") and target != "custom":
+            caveats.append("Temperature differs from 25 °C; tabulated reference offsets may be inaccurate.")
+        if ph is not None and not -2<=ph<=16:
+            caveats.append("pH is outside the usual range −2 to 16; check the value.")
+    return result

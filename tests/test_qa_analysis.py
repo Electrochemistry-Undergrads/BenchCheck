@@ -41,3 +41,22 @@ def test_notebook_analysis(case):
         elif case == 82:
             assert 'side_reaction_vertex' not in triggered
             assert not any('largest forward peak' in t for h in r['hypotheses'] for t in h['observations'])
+
+
+def test_plot_decimation_preserves_extrema_and_peak_indices():
+    import numpy as np
+    from benchcheck.cv.analysis import analyze
+    from benchcheck.cv.parsing import parse_table
+    from benchcheck.cv.plot_data import decimate
+    from tests.test_analysis import csv_bytes,base_config
+    e=np.r_[np.linspace(0,1,15000),np.linspace(1,0,15000)]
+    t=np.arange(len(e))*.01
+    i=np.where(np.arange(len(e))<15000,1.,-1.)*np.exp(-((e-.5)/.05)**2)*1e-3
+    result=analyze(parse_table(csv_bytes(t,e,i)),base_config())
+    maximum=max(result['data']['i']); minimum=min(result['data']['i'])
+    reduced=decimate(result,2000)
+    assert len(reduced['data']['E'])<=2000
+    assert max(reduced['data']['i'])==maximum and min(reduced['data']['i'])==minimum
+    for role in ('forward','return'):
+        for peak in reduced['selected'][role]['peaks']:
+            assert reduced['data']['E'][peak['index']]==pytest.approx(peak['potential'])

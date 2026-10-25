@@ -1,0 +1,2 @@
+for sr in [{"value":50,"unit":"V/min"},{"value":-50,"unit":"mV/s"},{"value":0,"unit":"mV/s"},{"value":50,"unit":None}]:
+    j=analyze({"scan_rate":sr}).json(); print(sr, "-> scan_rate_entered:", j["scan_rate_entered"], "| notices:", j["notices"])

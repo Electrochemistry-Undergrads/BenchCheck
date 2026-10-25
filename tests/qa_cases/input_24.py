@@ -1,0 +1,2 @@
+L=GOOD.splitlines(); L[901]="900.0,1.0,1e300"; a=ana("\n".join(L)+"\n",cfg("E/V","I/mA","time/s")).json()
+print("max i:", max(a["data"]["i"]), "| notices:", a["notices"], "| quality:", a["quality"], "| cycle-1 charge_ratio:", a["cycles"][0]["charge_ratio"])

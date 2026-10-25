@@ -1,0 +1,2 @@
+print(requests.post(B+"/api/conversion-preview",data='{"from":"she","target":"RHE","ph":NaN}',headers={"content-type":"application/json"}).text)
+print(preview(**{"from":"ag_agcl_3m_kcl","target":"RHE","ph":7,"temperature_c":1e308}).text)

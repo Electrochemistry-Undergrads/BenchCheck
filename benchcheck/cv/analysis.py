@@ -143,6 +143,10 @@ def _prepare(table: ParsedTable, config: AnalysisConfig, processing: list[dict],
     rc = config.reference_conversion
     if rc is not None:
         plan = plan_conversion(meta.reference_electrode, rc.target, meta.ph, meta.temperature_c, rc.offset_v, rc.description)
+        if plan.get("possible") and (rc.target == "RHE" or meta.reference_electrode == "rhe") and meta.solvent == "non-aqueous":
+            plan["caveats"].append("RHE conversion in non-aqueous media requires a validated pH scale and liquid-junction correction.")
+        if plan.get("possible"):
+            notices.extend(plan["caveats"])
         if not plan.get("possible"):
             notices.append(f"Reference conversion not applied: {plan.get('reason')}")
         elif not rc.confirmed:
@@ -150,7 +154,7 @@ def _prepare(table: ParsedTable, config: AnalysisConfig, processing: list[dict],
         else:
             E = E + plan["offset_v"]
             scale = {"label": f"V vs {plan['to_label']}", "converted": True, "offset_v": plan["offset_v"],
-                     "from": ref_label, "explanation": plan["explanation"], "caveats": plan["caveats"]}
+                     "from": ref_label, "explanation": plan["explanation"], "caveats": plan["caveats"], "note": plan.get("note")}
             processing.append({
                 "step": "Reference-scale conversion (user-confirmed)",
                 "detail": f"{plan['explanation']} {' '.join(plan['caveats'])}",
@@ -575,6 +579,9 @@ def analyze(table: ParsedTable, config: AnalysisConfig) -> dict:
     selected = next((c for c in cycle_feats if c["number"] == selected_no), None)
     trends = _trends(cycle_feats, selected)
     quality = _quality(E, i, i_s, t, segments, cycles, cycle_feats, selected, noise, scan_rate, measured_rate, density, scale)
+    for cycle in cycle_feats:
+        if not cycle["complete"] or not cycle.get("forward") or not cycle["forward"]["peaks"]:
+            notices.append(f"Cycle {cycle['number']} excluded from stability trends: incomplete cycle or no resolved forward peak.")
     observations = _observations(selected, trends, density, scale, scan_rate, measured_rate, meta.process_type)
 
     point_cycle = np.zeros(E.size, dtype=int)
