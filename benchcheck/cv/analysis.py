@@ -208,7 +208,8 @@ def _cycle_features(cycle, segments, E, i, i_s, t, scan_rate, noise, process_typ
     )
     _label_peaks([s for s in (fwd, ret) if s])
 
-    pairs, unpaired_f, unpaired_r = ([], fwd["peaks"] if fwd else [], ret["peaks"] if ret else [])
+    # Without a return sweep there is nothing to pair with: forward peaks are not "unpaired".
+    pairs, unpaired_f, unpaired_r = ([], fwd["peaks"] if fwd and ret else [], ret["peaks"] if ret else [])
     if fwd and ret:
         pairs, unpaired_f, unpaired_r = pk.pair_peaks(fwd["peaks"], ret["peaks"])
     pair_rows = []
@@ -261,6 +262,7 @@ def _cycle_features(cycle, segments, E, i, i_s, t, scan_rate, noise, process_typ
         "main_pair": main_pair,
         "threshold": threshold,
         "current_span": span,
+        "has_return": ret is not None,
     }
 
 
@@ -352,6 +354,10 @@ def _quality(E, i, i_s, t, segments, cycles, cycle_feats, selected, noise, meta_
                 "small features may not be resolvable.")
         if not selected["forward"]["peaks"]:
             add("no_forward_peak", "warning", "No peak was detected on the forward sweep of the analyzed cycle.")
+    if selected and not selected.get("has_return"):
+        add("no_return_sweep", "warning",
+            "The analyzed cycle has no return sweep (a linear sweep?). Reversibility, peak separation and charge "
+            "balance cannot be assessed.")
     complete = [c for c in cycles if c.complete]
     if len(complete) < 2:
         add("single_cycle", "info", "Fewer than two complete cycles: cycle-to-cycle stability cannot be assessed.")

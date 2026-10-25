@@ -209,3 +209,34 @@ def test_constant_potential_rejected():
     raw = csv_bytes(t, np.full(100, 0.5), np.zeros(100))
     with pytest.raises(AnalysisError):
         analyze(parse_table(raw), base_config())
+
+
+def test_single_sweep_is_not_treated_as_missing_return_peak():
+    E = np.arange(0, 1, 0.001)
+    i = 1e-4 * np.exp(-((E - 0.5) / 0.05) ** 2)
+    t = np.arange(E.size) * 0.01
+    res = analyze(parse_table(csv_bytes(t, E, i)), base_config())
+    assert res["selected"]["unpaired_forward"] == []
+    assert "no_return_sweep" in [q["code"] for q in res["quality"]]
+    from benchcheck.reasoning.hypotheses import evaluate
+    from benchcheck.reasoning.report import build_report
+
+    assert "irreversible_loss" not in [h["id"] for h in evaluate(res) if h["triggered"]]
+    report = build_report({k: v for k, v in res.items() if k != "data"}, {})
+    assert report["next_check"]["id"] == "quality_no_return_sweep"
+
+
+def test_reduction_first_us_convention():
+    sim = simulate_reversible(e0=0.25, e_start=-0.05, e_vertex=0.55, scan_rate=0.1)
+    # Mirror an oxidation-first CV of R into a reduction-first CV of O (equal D): E' = 2E0 - E, i' = -i.
+    E = 0.5 - sim["potential_v"]
+    i_iupac = -sim["current_a"]
+    raw = csv_bytes(sim["time_s"], E, -i_iupac)  # exported with cathodic currents positive
+    meta = {"process_type": "dissolved_species", "scan_rate": {"value": 100, "unit": "mV/s"}}
+    res = analyze(parse_table(raw), base_config(metadata=meta, current_convention="cathodic_positive"))
+    assert res["forward_direction"] == -1
+    pair = res["selected"]["pairs"][0]
+    assert res["selected"]["forward"]["peaks"][0]["kind"] == "cathodic"
+    assert 0.055 <= pair["delta_ep"] <= 0.062
+    assert pair["nicholson_ratio"] == pytest.approx(1.0, abs=0.05)
+    assert res["selected"]["forward"]["peaks"][0]["height"] == pytest.approx(sim["randles_sevcik_a"], rel=0.02)

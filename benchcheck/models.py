@@ -103,6 +103,15 @@ class ExtractRequest(BaseModel):
     prefer_cache: bool = False
 
 
+class ConversionPreviewRequest(BaseModel):
+    from_: str | None = Field(None, alias="from")
+    target: Literal["SHE", "RHE", "custom"] = "SHE"
+    ph: float | None = None
+    temperature_c: float | None = None
+    offset_v: float | None = None
+    description: str | None = None
+
+
 class ReportRequest(BaseModel):
     analysis: dict
     evidence: dict = {}

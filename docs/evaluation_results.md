@@ -1,6 +1,6 @@
 # BenchCheck evaluation results
 
-Generated 2026-10-25 00:37 UTC by `scripts/evaluate.py`. All numbers are computed by the script.
+Generated 2026-10-25 00:40 UTC by `scripts/evaluate.py`. All numbers are computed by the script.
 
 ## A. Numerical validation against theory (simulated data)
 

@@ -78,4 +78,4 @@ To complete the audit:
 
 ## 3. Test suite
 
-`python -m pytest`: 84 tests covering units, parsing (EC-Lab-, Autolab- and Gamry-style headers, European formatting, headerless files), segmentation (noise, plateaus, mid-window starts, negative-first scans), peaks and baselines, pairing, Nicholson's formula, charge integration, the analysis pipeline, reasoning, the SerpApi client and cache (live, cached, errors, redaction, empty results), evidence records, and the HTTP API end to end.
+`python -m pytest`: 91 tests covering units, parsing (EC-Lab-, Autolab- and Gamry-style headers, European formatting, headerless files), segmentation (noise, plateaus, mid-window starts, negative-first scans), single-sweep (LSV) files, reduction-first US-convention data, peaks and baselines, pairing, Nicholson's formula, charge integration, the analysis pipeline, reasoning, the SerpApi client and cache (live, cached, errors, redaction, empty results), evidence records, and the HTTP API end to end.

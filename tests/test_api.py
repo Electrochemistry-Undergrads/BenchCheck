@@ -130,3 +130,17 @@ def test_conversion_preview(client):
     assert not r["possible"]
     r = client.post("/api/conversion-preview", json={"from": "sce", "target": "RHE", "ph": 7}).json()
     assert r["offset_v"] == pytest.approx(0.241 + 0.05916 * 7, abs=1e-4)
+
+
+def test_conversion_preview_validates_input(client):
+    assert client.post("/api/conversion-preview", json={"from": "sce", "target": "RHE", "ph": "seven"}).status_code == 422
+
+
+@pytest.mark.parametrize("analysis", [
+    {},
+    {"selected": "not-a-dict"},
+    {"selected": {"pairs": [{}], "main_pair": 0}},
+    {"selected": {"forward": {"peaks": [{"label": "A1"}]}}, "metadata": None},
+])
+def test_report_never_500s_on_malformed_payload(client, analysis):
+    assert client.post("/api/report", json={"analysis": analysis}).status_code in (200, 422)

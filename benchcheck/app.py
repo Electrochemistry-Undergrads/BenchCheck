@@ -20,7 +20,14 @@ from .cv.parsing import MAX_BYTES, ParseError, parse_table, suggest_mapping
 from .cv.reference import REFERENCE_ELECTRODES, plan_conversion
 from .evidence.serpapi import SerpApiClient
 from .evidence.sources import extract_record, extraction_url, merge_sources, select_for_extraction, snippet_record
-from .models import AnalysisConfig, ExtractRequest, ReportRequest, SearchRequest, SelectRequest
+from .models import (
+    AnalysisConfig,
+    ConversionPreviewRequest,
+    ExtractRequest,
+    ReportRequest,
+    SearchRequest,
+    SelectRequest,
+)
 from .reasoning.hypotheses import THRESHOLDS, evaluate, evidence_plan
 from .reasoning.report import build_report
 from .settings import PROJECT_ROOT, get_settings
@@ -98,10 +105,9 @@ def inspect(file: UploadFile = File(...)):
 
 
 @app.post("/api/conversion-preview")
-def conversion_preview(payload: dict):
+def conversion_preview(req: ConversionPreviewRequest):
     """Describe (without applying) a reference conversion so the user can confirm it."""
-    return plan_conversion(payload.get("from"), payload.get("target", "SHE"), payload.get("ph"),
-                           payload.get("temperature_c"), payload.get("offset_v"), payload.get("description"))
+    return plan_conversion(req.from_, req.target, req.ph, req.temperature_c, req.offset_v, req.description)
 
 
 @app.post("/api/analyze")
@@ -165,7 +171,10 @@ def evidence_extract(req: ExtractRequest):
 
 @app.post("/api/report")
 def report(req: ReportRequest):
-    return build_report(req.analysis, req.evidence)
+    try:
+        return build_report(req.analysis, req.evidence)
+    except (KeyError, TypeError, IndexError, AttributeError, ValueError) as exc:
+        raise HTTPException(422, f"The analysis or evidence payload is incomplete ({type(exc).__name__}).") from exc
 
 
 @app.exception_handler(ValueError)

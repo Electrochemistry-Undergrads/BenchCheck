@@ -113,6 +113,11 @@ CHECKS: dict[str, dict] = {
 }
 
 QUALITY_CHECKS = {
+    "no_return_sweep": {
+        "title": "Record the return sweep",
+        "procedure": "Run a full cycle (forward and return sweeps) over the same window so reversibility, peak "
+                     "separation and charge balance can be assessed.",
+    },
     "clipping": {
         "title": "Re-record with a larger current range",
         "procedure": "Increase the potentiostat current range (or disable autoranging limits) and repeat; clipped "

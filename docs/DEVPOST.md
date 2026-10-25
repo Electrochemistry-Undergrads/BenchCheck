@@ -44,7 +44,7 @@ All of these are measured by `scripts/evaluate.py`:
 - Surface-confined peak current within **0.93%** of theory; FWHM **89.9 mV** vs 90.6 mV.
 - log i<sub>p</sub> vs log v slope **0.500** across 10–500 mV/s.
 - On the labeled synthetic examples, BenchCheck flagged **exactly** the mechanisms the generator contained. For the weak-return case it recommended the check (lower the vertex) that the clear example shows resolves the problem.
-- 84 automated tests; 16/16 evaluation checks pass; works at phone width.
+- 91 automated tests; 16/16 evaluation checks pass; works at phone width.
 
 *Fill in before submitting:* results of the live SerpApi run and the human evidence audit (how many cited passages actually support their hypothesis). Report the real counts.
 

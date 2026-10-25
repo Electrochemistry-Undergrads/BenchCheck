@@ -66,7 +66,7 @@ Run the checks:
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest              # 84 tests
+python -m pytest              # 91 tests
 python scripts/evaluate.py    # predefined cases → docs/evaluation_results.md
 ```
 

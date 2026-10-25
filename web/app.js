@@ -523,6 +523,7 @@ function renderPlot() {
   const sel = a.selected;
   const traces = [];
   const annotations = [];
+  const lineType = E.length > 20000 ? "scattergl" : "scatter"; // WebGL keeps large files responsive
   const showAll = $("#opt-all").checked;
   const showBase = $("#opt-base").checked;
   const showSmooth = $("#opt-smooth").checked;
@@ -534,7 +535,7 @@ function renderPlot() {
       if (c.number === sel.number) continue;
       const idx = indices(d.cycle, c.number);
       traces.push({
-        x: idx.map((k) => E[k]), y: idx.map((k) => I[k]), mode: "lines", name: `Cycle ${c.number}`,
+        type: lineType, x: idx.map((k) => E[k]), y: idx.map((k) => I[k]), mode: "lines", name: `Cycle ${c.number}`,
         line: { color: colors.other, width: 1.3 }, hovertemplate: `Cycle ${c.number}<br>E = %{x:.3f} V<br>i = %{y:.4g} ${unit}<extra></extra>`,
       });
     }
@@ -551,7 +552,7 @@ function renderPlot() {
     for (let k = sw.start_index; k <= sw.end_index; k++) idx.push(k);
     const label = `Cycle ${sel.number} · ${key} sweep (${sw.direction_label})`;
     traces.push({
-      x: idx.map((k) => E[k]), y: idx.map((k) => I[k]), mode: "lines", name: label,
+      type: lineType, x: idx.map((k) => E[k]), y: idx.map((k) => I[k]), mode: "lines", name: label,
       line: { color: colors[key], width: 2.4 },
       hovertemplate: `${esc(label)}<br>E = %{x:.3f} V<br>i = %{y:.4g} ${unit}<extra></extra>`,
     });
@@ -919,8 +920,11 @@ function renderEvidence() {
   const rows = sources.map((src) => {
     const url = safeUrl(src.link) || safeUrl(src.content?.final_url) || safeUrl(src.content?.url);
     const extracting = ev.extractPlan.find((x) => x.source_id === src.source_id && x.status === "running");
-    const linkNote = src.content && ["full text", "abstract"].includes(src.content.status)
-      ? "link retrieved via SerpApi Extract" : src.content?.status === "retrieval failed" ? "Extract failed; Scholar link not verified" : "Scholar link (not fetched)";
+    const linkNote = !src.content?.via
+      ? "Scholar link (page not fetched)"
+      : src.content.status === "retrieval failed"
+        ? "SerpApi Extract could not retrieve this page"
+        : "page retrieved via SerpApi Extract";
     const grouped = new Map();
     for (const p of src.passages || []) {
       if (p.hypothesis_id !== "context" && !triggered.has(p.hypothesis_id)) continue;
