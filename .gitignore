@@ -22,3 +22,6 @@ data/cache/live/
 # Scratch output
 out/
 screenshots/
+
+# Hallmark working records (screenshots, lint output)
+.hallmark/
