@@ -58,7 +58,7 @@ cp .env.example .env                                   # then put your SerpApi k
 python -m benchcheck                                   # http://127.0.0.1:8000
 ```
 
-Upload your instrument export, confirm the suggested columns and units, enter your experiment details, then click **Confirm & analyze**. Click **Find literature evidence** to compare relevant papers. The app has no built-in example picker. If you upload simulated data, check **My file contains simulated data** so the analysis and exported reports are labeled accordingly.
+Upload your instrument export, confirm the suggested columns and units, enter your experiment details, then click **Confirm & analyze**. Click **Find literature evidence** to compare relevant papers. The app has no built-in example picker. Uploaded CSV/TXT files with an explicit `# SYNTHETIC` or `# SIMULATED` comment are automatically labeled as simulated in the analysis and exported reports.
 
 Without a key, the numerical analysis works fully and the evidence panel explains that evidence is unavailable (or shows previously retrieved, cached evidence, labeled as cached).
 
@@ -93,7 +93,7 @@ SerpApi is the evidence engine: without it, every explanation is labeled *assump
 3. **Evidence linking.** For each hypothesis, BenchCheck picks the best 1–2-sentence passage per source by term matching (plus your material and salt), verifies it is a verbatim substring of the retrieved text, and highlights the matched terms.
 4. **Condition comparison.** Material family, electrolyte salt and concentration, aqueous vs non-aqueous, reference electrode family, and scan-rate regime (within 3×) are extracted with the same dictionaries for your metadata and for the paper text. Unstated conditions are reported as *not stated in the retrieved text*, never guessed.
 5. **Influence on the output.** Each explanation is labeled *condition-matched evidence*, *related evidence*, or *no supporting passage*, with the differing conditions listed as limits. Next checks that target hypotheses with condition-matched literature rank higher.
-6. **Evidence log drawer.** Every SerpApi call with its query or URL, status (live / cached / error / unavailable), retrieval time (UTC), SerpApi search ID, Google Scholar page link, result count, content classification, and credits used.
+6. **Evidence provenance in exports.** The JSON report retains every SerpApi call with its query or URL, status (live / cached / error / unavailable), retrieval time (UTC), SerpApi search ID, Google Scholar page link, result count, content classification, and credits used.
 7. **Failures and cache.** API errors never block the numerical analysis. Live responses are stored verbatim in `data/cache/` with their retrieval time; reuse is always labeled *cached* with the original retrieval time. The cache is written only from live SerpApi responses.
 
 Credit use per analysis: up to 3 Scholar searches + 5 Extract pages (configurable).
@@ -127,7 +127,7 @@ web/ (vanilla JS + Plotly)                   benchcheck/ (FastAPI, Python)
 │ upload · mapping · metadata │ ───────────────▶ │ cv/parsing        CSV detection, suggestions│
 │ CV plot · key stats         │   /api/analyze   │ cv/segmentation   reversals, sweeps, cycles │
 │ evidence table · report     │ ───────────────▶ │ cv/peaks, cv/analysis  peaks, baselines,    │
-│ evidence log drawer         │                  │                   ratios, charge, quality   │
+│ evidence table + exports    │                  │                   ratios, charge, quality   │
 │                             │ /api/evidence/*  │ reasoning/hypotheses  rules + query plan    │
 │ orchestrates: search ×N →   │ ───────────────▶ │ evidence/serpapi  Scholar + Extract + cache │──▶ SerpApi
 │ select → extract ×K →       │                  │ evidence/sources  levels, passages          │

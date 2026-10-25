@@ -128,7 +128,6 @@ async function init() {
     return;
   }
   renderEvidencePill();
-  renderDrawer();
 }
 
 function bindStaticEvents() {
@@ -138,10 +137,6 @@ function bindStaticEvents() {
       e.preventDefault();
       $("#file-input").click();
     }
-  });
-  $("#data-synthetic").addEventListener("change", async (e) => {
-    state.synthetic = e.target.checked;
-    if (state.analysis) await runAnalysis();
   });
   $("#file-input").addEventListener("change", (e) => e.target.files[0] && loadFile(e.target.files[0]));
   dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
@@ -154,19 +149,6 @@ function bindStaticEvents() {
   $("#analyze-btn").addEventListener("click", () => runAnalysis());
   ["#opt-all", "#opt-base", "#opt-smooth"].forEach((id) => $(id).addEventListener("change", renderPlot));
   $("#evidence-btn").addEventListener("click", runEvidence);
-  $("#open-drawer").addEventListener("click", () => toggleDrawer(true));
-  $("#close-drawer").addEventListener("click", () => toggleDrawer(false));
-  $("#scrim").addEventListener("click", () => toggleDrawer(false));
-  document.addEventListener("keydown", (e) => {
-    if (!$("#drawer").classList.contains("open")) return;
-    if (e.key === "Escape") toggleDrawer(false);
-    if (e.key === "Tab") {
-      const items = $$("button, a[href]", $("#drawer"));
-      const first = items[0], last = items.at(-1);
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    }
-  });
   $("#btn-png").addEventListener("click", () =>
     Plotly.downloadImage("plot", { format: "png", width: 1400, height: 800, filename: `benchcheck-cv-${(state.fileName || "data").replace(/\.\w+$/, "")}` }));
   $("#btn-scale").addEventListener("click", openScaleDialog);
@@ -206,7 +188,7 @@ async function loadFile(file) {
   showError("");
   state.file = file;
   state.fileName = file.name;
-  state.synthetic = $("#data-synthetic").checked;
+  state.synthetic = false;
   state.inspect = null;
   state.analysis = null;
   state.report = null;
@@ -226,9 +208,14 @@ async function loadFile(file) {
   const form = new FormData();
   form.append("file", file, file.name);
   try {
-    const inspection = await api("/api/inspect", { method: "POST", form });
+    const [inspection, preamble] = await Promise.all([
+      api("/api/inspect", { method: "POST", form }),
+      file.slice(0, 16384).text(),
+    ]);
     if (requestId !== state.loadRequest) return;
     state.inspect = inspection;
+    // Preserve explicit provenance markers in uploaded CSV/TXT comments.
+    state.synthetic = /^\s*#\s*(?:synthetic|simulated)\b/im.test(preamble);
   } catch (e) {
     if (requestId === state.loadRequest) showError(`Could not read ${file.name}: ${e.message}`);
     return;
@@ -504,7 +491,7 @@ function renderResults() {
   const a = state.analysis;
   const banner = $("#synthetic-banner");
   banner.hidden = !state.synthetic;
-  banner.textContent = "Simulated data. You marked this file as simulated. These results are not experimental measurements.";
+  banner.textContent = "Simulated data. The uploaded file identifies its data as simulated. These results are not experimental measurements.";
   const notices = [...(a.notices || [])];
   $("#notices").innerHTML = notices.map((n) => `<div class="alert alert-warn">${esc(n)}</div>`).join("");
   renderCycleButtons();
@@ -847,7 +834,6 @@ async function runEvidence() {
       state.evidence.log.push({ engine: "google_scholar", query: q.query, status: "error", error: e.message });
     }
     renderEvidence();
-    renderDrawer();
   }
   if (records.length) {
     try {
@@ -873,7 +859,6 @@ async function runEvidence() {
         state.evidence.log.push({ engine: "extract", url: item.url, status: "error", error: e.message });
       }
       renderEvidence();
-      renderDrawer();
     });
   }
   const okLogs = state.evidence.log.filter((l) => l.ok);
@@ -890,7 +875,6 @@ async function runEvidence() {
   $("#evidence-btn").disabled = false;
   $("#evidence-btn").textContent = "Re-run evidence search";
   renderEvidence();
-  renderDrawer();
   await refreshReport();
 }
 
@@ -979,59 +963,6 @@ function renderEvidence() {
     <thead><tr><th>Paper &amp; source link</th><th>Retrieved passage (verbatim)</th><th>Evidence level</th><th>Conditions vs yours</th><th>Differences / missing</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     <p class="muted small">✓ match, ≈ related, ✗ differs, ? not stated in the retrieved text, – not entered by you. Hover chips for details. Search snippets are Google Scholar excerpts, not full-paper evidence.</p>`;
-}
-
-// ------------------------------------------------------------------ drawer
-
-function toggleDrawer(open) {
-  $("#drawer").classList.toggle("open", open);
-  $("#drawer").setAttribute("aria-hidden", String(!open));
-  $("#scrim").hidden = !open;
-  $("#drawer").inert = !open;
-  $("#main").inert = open;
-  $(".topbar").inert = open;
-  if (open) {
-    renderDrawer();
-    $("#close-drawer").focus();
-  } else $("#open-drawer").focus();
-}
-
-function renderDrawer() {
-  const s = state.status;
-  if (!s) return;
-  const ev = state.evidence;
-  const credits = ev.log.reduce((n, l) => n + (l.credits || 0), 0);
-  const summary = `<dl class="kv">
-      <dt>Server mode</dt><dd>${esc(s.evidence_mode)} (configured: ${esc(s.configured_mode)})</dd>
-      <dt>SerpApi key</dt><dd>${s.serpapi_configured ? "configured on the server (never sent to the browser)" : "not configured"}</dd>
-      <dt>Cache</dt><dd>${esc(s.cache_entries.live)} local live response(s), ${esc(s.cache_entries.demo)} demo response(s); real SerpApi responses only</dd>
-      <dt>Budget</dt><dd>${esc(s.max_queries)} Scholar queries + ${esc(s.max_extracts)} Extract pages per run</dd>
-      <dt>This run</dt><dd>${ev.log.length} call(s), ${credits} live credit(s) used</dd>
-    </dl>`;
-  const entries = ev.log.map((l) => {
-    const target = l.query || l.url || "";
-    const scholar = safeUrl(l.google_scholar_url);
-    return `<div class="log-entry">
-      <div class="le-head"><span class="badge b-none">${esc(l.engine)}</span>${statusChip(l.status)}${l.cached ? `<span class="small muted">originally retrieved ${esc(l.retrieved_at || "?")}</span>` : ""}</div>
-      <div class="le-target">${esc(target)}</div>
-      <dl class="kv">
-        ${l.purpose ? `<dt>Purpose</dt><dd>${esc(l.purpose)}</dd>` : ""}
-        <dt>Retrieved (UTC)</dt><dd>${esc(l.retrieved_at || "—")}</dd>
-        ${l.served_at ? `<dt>Served (UTC)</dt><dd>${esc(l.served_at)}</dd>` : ""}
-        ${l.elapsed_s !== undefined && l.elapsed_s !== null ? `<dt>Elapsed</dt><dd>${esc(l.elapsed_s)} s</dd>` : ""}
-        ${l.serpapi_search_id ? `<dt>SerpApi search ID</dt><dd><code>${esc(l.serpapi_search_id)}</code></dd>` : ""}
-        ${scholar ? `<dt>Google Scholar</dt><dd><a href="${esc(scholar)}" target="_blank" rel="noopener noreferrer">open results page</a></dd>` : ""}
-        ${l.results_count !== undefined ? `<dt>Results</dt><dd>${esc(l.results_count)}${l.total_results ? ` of about ${esc(l.total_results)}` : ""}</dd>` : ""}
-        ${l.classification ? `<dt>Content</dt><dd>${esc(l.classification)}</dd>` : ""}
-        ${l.fallback_note ? `<dt>Note</dt><dd>${esc(l.fallback_note)}</dd>` : ""}
-        ${l.error ? `<dt>Error</dt><dd class="is-bad">${esc(l.error)}</dd>` : ""}
-        <dt>Credits</dt><dd>${esc(l.credits ?? 0)}</dd>
-      </dl></div>`;
-  }).join("");
-  const plan = (state.analysis?.evidence_plan || []).map((q) => `<li><code>${esc(q.query)}</code> <span class="muted">— ${esc(q.purpose)}</span></li>`).join("");
-  $("#drawer-body").innerHTML = summary +
-    (plan ? `<h3 class="drawer-sub">Planned Google Scholar queries</h3><ul class="small">${plan}</ul>` : "") +
-    `<h3 class="drawer-sub">Calls</h3>` + (entries || `<p class="muted">No SerpApi calls yet.</p>`);
 }
 
 // ------------------------------------------------------------------ dialogs

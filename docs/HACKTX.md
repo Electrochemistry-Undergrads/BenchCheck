@@ -22,4 +22,4 @@ Official sources checked on October 25, 2026:
 - **Evidence:** review the live/cached responses and judge whether each passage supports its attached hypothesis. Automated substring checks cannot establish scientific support.
 - **Personal story:** replace draft placeholders only with true experiences. Claim only results that were actually measured.
 
-The frontend intentionally has no example picker. Synthetic test data remain available as repository fixtures and can be uploaded explicitly with the simulated-data checkbox. Exported reports then retain the simulated-data label. This change does not certify the entire submission or alter repository visibility.
+The frontend intentionally has no example picker. Synthetic test data remain available as repository fixtures. Their explicit SYNTHETIC file comment automatically labels the analysis and exported reports. This change does not certify the entire submission or alter repository visibility.

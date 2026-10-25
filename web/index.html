@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@400;500&family=Atkinson+Hyperlegible+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=white-20261025">
+  <link rel="stylesheet" href="/static/styles.css?v=clean-ui-20261025">
   <script src="/static/vendor/plotly-2.35.3.min.js"></script>
 </head>
 <body>
@@ -22,12 +22,10 @@
           <path class="logo-ret" d="M27 13c-3 0-4 9-7 9s-3-6-5-6-2 4-4 4-3-3-6-3"/>
         </svg>
         <span class="brand-name">BenchCheck</span>
-        <span class="brand-tag">Electrochemistry, with clarity.</span>
       </a>
       <span class="workspace-label">CV workspace</span>
       <div class="topbar-actions">
         <span id="evidence-pill" class="pill pill-muted" role="status" title="Evidence source">Evidence: checking…</span>
-        <button id="open-drawer" class="btn" type="button">Evidence log</button>
       </div>
     </div>
   </header>
@@ -64,7 +62,6 @@
               <span class="file-types">CSV, TXT, TSV or DAT</span>
             </label>
             <p id="upload-help" class="upload-help">Potential and current columns are needed. A time column enables additional scan-rate and charge checks.</p>
-            <label class="toggle synthetic-toggle"><input id="data-synthetic" type="checkbox"> My file contains simulated data</label>
             <div id="file-info" class="file-info" role="status" aria-live="polite" hidden></div>
           </section>
 
@@ -189,21 +186,9 @@
     </section>
 
     <footer class="footer">
-      <p>BenchCheck. Built for the next question.</p>
       <p>Measurements from your data. Literature via SerpApi.</p>
     </footer>
   </main>
-
-  <aside id="drawer" class="drawer" aria-hidden="true" aria-labelledby="h-drawer" role="dialog" aria-modal="true" inert>
-    <div class="drawer-head">
-      <h2 id="h-drawer">Evidence log</h2>
-      <button id="close-drawer" class="btn btn-quiet btn-icon" type="button" aria-label="Close evidence log">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div id="drawer-body" class="drawer-body"></div>
-  </aside>
-  <div id="scrim" class="scrim" hidden></div>
 
   <dialog id="confirm-dialog" class="dialog" aria-labelledby="dlg-title">
     <form method="dialog">
@@ -216,6 +201,6 @@
     </form>
   </dialog>
 
-  <script type="module" src="/static/app.js"></script>
+  <script type="module" src="/static/app.js?v=clean-ui-20261025"></script>
 </body>
 </html>

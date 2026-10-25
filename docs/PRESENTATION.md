@@ -16,7 +16,7 @@ Five beats. Keep the demo itself to about 80 seconds (use the [demo script](DEMO
 
 ## 3. Live demo (0:40–2:00)
 
-Upload the weak-return synthetic CSV, mark it simulated, confirm its columns, units, and metadata → analyze → key numbers → **Find literature evidence** → evidence table → next check → evidence log. (See the demo script for exact lines.)
+Upload the weak-return synthetic CSV, confirm its columns, units, and metadata → analyze → key numbers → **Find literature evidence** → evidence table → next check → export JSON. (See the demo script for exact lines.)
 
 ## 4. Why SerpApi is essential (2:00–2:25)
 

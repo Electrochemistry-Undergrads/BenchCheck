@@ -19,7 +19,7 @@ Upload a cyclic voltammogram (CSV/TXT). BenchCheck:
 3. **Literature evidence (SerpApi):** builds Google Scholar queries from your conditions and the flagged features, retrieves results via SerpApi's Google Scholar API, and pulls abstracts or full text with SerpApi's Extract API. Each source shows a verbatim passage, whether it came from full text, an abstract or only a search snippet, which experimental conditions match yours, and which differ and why that matters.
 4. **Next check:** ranks practical measurements by how many hypotheses they distinguish, whether condition-matched literature supports them, and effort. For example: "repeat with the forward vertex pulled back 50–100 mV."
 
-Reports export as Markdown, HTML or JSON. An evidence log shows every SerpApi call with its query, timestamp, search ID and live/cached status.
+Reports export as Markdown, HTML or JSON. JSON exports retain SerpApi call provenance with each query, timestamp, search ID and live/cached status.
 
 ## How we built it
 
