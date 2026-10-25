@@ -127,7 +127,7 @@ class ResponseCache:
         out = {}
         for folder in ("live", "demo"):
             base = self.root / folder
-            out[folder] = sum(1 for _ in base.rglob("*.json")) if base.exists() else 0
+            out[folder] = sum(1 for _ in base.glob("*/*.json")) if base.exists() else 0  # engine/key.json only
         return out
 
 

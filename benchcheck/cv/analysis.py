@@ -91,12 +91,15 @@ def _prepare(table: ParsedTable, config: AnalysisConfig, processing: list[dict],
     if m.time:
         cols += f", time = '{m.time}' ({label(t_unit)})"
     processing.append({"step": "Column mapping (user-confirmed)", "detail": cols + "."})
-    processing.append({
-        "step": "Unit conversion",
-        "detail": f"Potential ×{1.0 if e_unit == 'V' else 1e-3:g} → V; current converted from "
-                  f"{label(i_unit)} to {'A cm⁻²' if density else 'A'}"
-                  + (f"; time from {label(t_unit)} to s." if m.time else "."),
-    })
+    def conversion(kind_label, unit, base):
+        return f"{kind_label} in {base} (no conversion)" if unit in (base, base.replace(" cm⁻²", "/cm2")) else \
+            f"{kind_label} {label(unit)} → {base}"
+
+    parts = [conversion("potential", e_unit, "V"), conversion("current", i_unit, "A cm⁻²" if density else "A")]
+    if m.time:
+        parts.append(conversion("time", t_unit, "s"))
+    detail = "; ".join(parts)
+    processing.append({"step": "Unit conversion", "detail": detail[:1].upper() + detail[1:] + "."})
     if dropped:
         processing.append({"step": "Rows excluded", "detail": f"{dropped} row(s) without numeric values in the mapped columns."})
     if t is not None and np.any(np.diff(t) < 0):
@@ -486,7 +489,7 @@ def analyze(table: ParsedTable, config: AnalysisConfig) -> dict:
     if main_w >= 5:
         processing.append({
             "step": "Smoothing (for peak location only)",
-            "detail": f"Savitzky–Golay filter, {main_w}-point window (≈{main_w * step * 1e3:.0f} mV), polynomial order "
+            "detail": f"Savitzky–Golay filter, {main_w}-point window (≈{(main_w - 1) * step * 1e3:.0f} mV), polynomial order "
                       f"{pk.SAVGOL_POLYORDER}, applied within each sweep. Peak potentials and currents are read from the "
                       "smoothed curve; raw data are unchanged and plotted.",
         })

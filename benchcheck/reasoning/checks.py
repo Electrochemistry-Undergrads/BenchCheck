@@ -8,7 +8,7 @@ The reasons are returned with every ranked check; there are no hidden scores.
 
 from __future__ import annotations
 
-from ..cv.units import fmt_scan_rate
+from ..cv.units import fmt_scan_rate, fmt_sig
 from ..evidence.conditions import user_material_profile
 from .hypotheses import ELEMENT_NAMES, RULES
 
@@ -144,7 +144,10 @@ def _rates_text(v: float | None) -> str:
     if not v:
         return "e.g., 0.5×, 1×, 2×, 5× and 10× your current rate"
     rates = [v * k for k in (0.5, 1, 2, 5, 10)]
-    return ", ".join(fmt_scan_rate(r) for r in rates)
+    if max(rates) < 0.1:
+        return "e.g., " + ", ".join(f"{float(fmt_sig(r * 1e3)):g}" for r in rates[:-1]) + \
+            f" and {float(fmt_sig(rates[-1] * 1e3)):g} mV s⁻¹"
+    return "e.g., " + ", ".join(fmt_scan_rate(r) for r in rates)
 
 
 def _cycle_minutes(analysis: dict) -> float | None:
