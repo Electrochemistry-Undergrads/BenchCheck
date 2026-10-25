@@ -29,7 +29,7 @@ python scripts/evaluate.py    # 16/16 checks -> docs/evaluation_results.md
 | CSV parsing, units, sign convention, segmentation, peaks, baselines, ratios, charge, quality flags | Done, tested, validated against theory (see docs/EVALUATION.md) |
 | Hypothesis rules, next-check ranking, report + export | Done, tested on both synthetic examples against ground truth |
 | SerpApi Google Scholar + Extract client, cache, evidence classification, condition comparison | Implemented; tested offline with labeled fixtures. **Never run against the live API** |
-| Web UI (plot, evidence table, report, evidence log drawer, confirmation dialogs) | Done; checked with Playwright on desktop and phone widths |
+| Web UI (plot, evidence table, report, evidence log drawer, confirmation dialogs) | Done; checked with Playwright on desktop and phone widths. Redesigned with the vendored Hallmark skill (Console theme, dark graphite): `web/tokens.css` holds every colour, font and spacing token, `web/base.css` the shared base, `web/styles.css` the app. Keep new colours and spacing on those tokens |
 | Offline demo cache (`data/cache/demo/`) | **Empty**: needs a live refresh |
 | Human audit of cited passages | **Not done**: needs real evidence first |
 | Docs: README, demo script, presentation, Devpost draft | Done; personal-story placeholders need filling |

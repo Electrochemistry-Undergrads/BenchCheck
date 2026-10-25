@@ -6,6 +6,14 @@ const esc = (v) =>
   String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const safeUrl = (u) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : null);
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+// Plotly cannot parse oklch(); resolve a colour token to rgb() through a 1x1 canvas.
+const cssColor = (name) => {
+  const ctx = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d");
+  ctx.fillStyle = cssVar(name) || "gray";
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `rgb(${r}, ${g}, ${b})`;
+};
 const fmt = (x, d = 2) => (x === null || x === undefined || Number.isNaN(x) ? "n/a" : Number(x).toFixed(d));
 const sig = (x, s = 3) => {
   if (x === null || x === undefined || !Number.isFinite(x)) return "n/a";
@@ -247,9 +255,8 @@ async function loadFile(file) {
   const t = state.inspect.table;
   $("#file-info").hidden = false;
   $("#file-info").innerHTML = `
-    <strong>${esc(t.filename)}</strong> · ${esc(t.n_rows)} rows · ${esc(t.columns.length)} columns · ${esc(t.delimiter)}-delimited
-    ${t.decimal === "," ? " · decimal commas" : ""}<br>
-    <span class="muted small">SHA-256 <code>${esc(t.sha256.slice(0, 16))}…</code>${t.notes.length ? " · " + esc(t.notes.join(" ")) : ""}</span>
+    <strong>${esc(t.filename)}</strong><br>${esc(t.n_rows)} rows, ${esc(t.columns.length)} columns, ${esc(t.delimiter)}-delimited${t.decimal === "," ? ", decimal commas" : ""}<br>
+    <span class="muted small">SHA-256 <code>${esc(t.sha256.slice(0, 16))}…</code>${t.notes.length ? "<br>" + esc(t.notes.join(" ")) : ""}</span>
     `;
   renderMapping();
   renderMetaForm();
@@ -297,7 +304,7 @@ function suggestionTag(role) {
 function renderMapping() {
   const ins = state.inspect;
   const mapped = new Set(Object.values(state.mapping).filter(Boolean));
-  const head = ins.columns.map((c) => `<th ${mapped.has(c) ? 'style="color:var(--primary)"' : ""}>${esc(c)}</th>`).join("");
+  const head = ins.columns.map((c) => `<th${mapped.has(c) ? ' class="is-mapped"' : ""}>${esc(c)}</th>`).join("");
   const rows = ins.preview_rows.slice(0, 6)
     .map((r) => `<tr>${r.map((v) => `<td class="num">${v === null ? "—" : esc(sig(v, 5))}</td>`).join("")}</tr>`).join("");
   $("#mapping").innerHTML = `
@@ -431,7 +438,7 @@ function updateSetupLine() {
   if (m.electrolyte) parts.push(m.electrolyte);
   if (m.reference_electrode) parts.push(refs[m.reference_electrode]?.label || m.reference_electrode);
   if (m.scan_rate?.value) parts.push(`${m.scan_rate.value} ${m.scan_rate.unit}`);
-  $("#setup-line").textContent = parts.join(" · ");
+  $("#setup-line").textContent = parts.join(", ");
 }
 
 // ------------------------------------------------------------------ analysis
@@ -497,7 +504,7 @@ function renderResults() {
   const a = state.analysis;
   const banner = $("#synthetic-banner");
   banner.hidden = !state.synthetic;
-  banner.textContent = "SIMULATED DATA · You marked this file as simulated. These results are not experimental measurements.";
+  banner.textContent = "Simulated data. You marked this file as simulated. These results are not experimental measurements.";
   const notices = [...(a.notices || [])];
   $("#notices").innerHTML = notices.map((n) => `<div class="alert alert-warn">${esc(n)}</div>`).join("");
   renderCycleButtons();
@@ -537,12 +544,13 @@ function renderPlot() {
   const sel = a.selected;
   const traces = [];
   const annotations = [];
+  const narrowPlot = document.getElementById("plot").clientWidth < 480;
   const lineType = E.length > 20000 ? "scattergl" : "scatter"; // WebGL keeps large files responsive
   const showAll = $("#opt-all").checked;
   const showBase = $("#opt-base").checked;
   const showSmooth = $("#opt-smooth").checked;
   const unit = a.display.current_label;
-  const colors = { forward: cssVar("--forward"), return: cssVar("--return"), other: cssVar("--other"), text: cssVar("--text"), warn: cssVar("--warn") };
+  const colors = { forward: cssColor("--forward"), return: cssColor("--return"), other: cssColor("--other"), text: cssColor("--text"), warn: cssColor("--warn") };
 
   if (showAll) {
     for (const c of a.cycle_list) {
@@ -564,7 +572,7 @@ function renderPlot() {
     if (!sw) continue;
     const idx = [];
     for (let k = sw.start_index; k <= sw.end_index; k++) idx.push(k);
-    const label = `Cycle ${sel.number} · ${key} sweep (${sw.direction_label})`;
+    const label = `Cycle ${sel.number}, ${key} sweep (${sw.direction_label})`;
     traces.push({
       type: lineType, x: idx.map((k) => E[k]), y: idx.map((k) => I[k]), mode: "lines", name: label,
       line: { color: colors[key], width: 2.4 },
@@ -606,23 +614,23 @@ function renderPlot() {
   }
   const fv = sel.forward?.vertex;
   if (fv?.rising) {
-    annotations.push({ x: fv.potential, y: fv.current * sc, text: "current still rising<br>at the vertex", showarrow: true,
-      arrowhead: 0, ax: -70, ay: -34, font: { size: 11.5, color: colors.warn }, arrowcolor: colors.warn, align: "right" });
+    annotations.push({ x: fv.potential, y: fv.current * sc, text: narrowPlot ? "still rising" : "current still rising<br>at the vertex", showarrow: true,
+      arrowhead: 0, ax: narrowPlot ? -36 : -70, ay: narrowPlot ? 44 : -34, font: { size: 11.5, color: colors.warn }, arrowcolor: colors.warn, align: "right" });
   }
-  const grid = cssVar("--border");
+  const grid = cssColor("--border");
   const layout = {
     margin: { l: 70, r: 18, t: 12, b: 54 },
     paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
-    font: { family: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", size: 12.5, color: cssVar("--text") },
+    font: { family: cssVar("--font-body"), size: 13, color: cssColor("--text") },
     xaxis: { title: { text: `E / ${a.display.potential_label}` }, gridcolor: grid, zeroline: false, linecolor: grid, mirror: true, showline: true },
-    yaxis: { title: { text: `${a.display.density ? "j" : "i"} / ${unit}` }, gridcolor: grid, zerolinecolor: cssVar("--muted"), zerolinewidth: 1, linecolor: grid, mirror: true, showline: true },
+    yaxis: { title: { text: `${a.display.density ? "j" : "i"} / ${unit}` }, gridcolor: grid, zerolinecolor: cssColor("--muted"), zerolinewidth: 1, linecolor: grid, mirror: true, showline: true },
     showlegend: false, hovermode: "closest", annotations,
   };
   Plotly.react("plot", traces, layout, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"] });
   $("#plot-legend").innerHTML =
-    `<span class="sw" style="background:${colors.forward}"></span>forward sweep <span class="sw" style="background:${colors.return}"></span>return sweep` +
-    (showAll && a.cycle_list.length > 1 ? `<span class="sw" style="background:${colors.other}"></span>other cycles` : "") +
-    ` · arrows show scan direction · ▲▼ detected peaks${showBase ? " · dashed: baseline (shaded = fit window)" : ""}`;
+    `<span class="sw sw-fwd"></span>forward sweep <span class="sw sw-ret"></span>return sweep` +
+    (showAll && a.cycle_list.length > 1 ? `<span class="sw sw-other"></span>other cycles` : "") +
+    `. Arrows show scan direction; ▲▼ mark detected peaks${showBase ? "; dashed lines are baselines (shaded: fit window)" : ""}.`;
 }
 
 function renderKeyStats() {
@@ -643,19 +651,19 @@ function renderKeyStats() {
     { label: "Peak separation ΔEp", tip: "Anodic minus cathodic peak potential of the main pair", value: main ? `${(main.delta_ep * 1000).toFixed(0)} mV` : "n/a",
       sub: main ? `pair ${main.anodic}/${main.cathodic}` : "", flag: main && main.delta_ep > limit },
     { label: "Cycle-to-cycle peak change", tip: "Tracked forward peak height, first vs last complete cycle", value: tr && tr.height_change_pct !== undefined && tr.height_change_pct !== null ? `${tr.height_change_pct > 0 ? "+" : ""}${tr.height_change_pct.toFixed(0)}%` : "n/a",
-      sub: tr && tr.first_cycle ? `cycles ${tr.first_cycle}→${tr.last_cycle}` : "needs ≥ 2 complete cycles", flag: tr && tr.height_change_pct < th.fade_pct },
+      sub: tr && tr.first_cycle ? `cycles ${tr.first_cycle} to ${tr.last_cycle}` : "needs ≥ 2 complete cycles", flag: tr && tr.height_change_pct < th.fade_pct },
   ];
   if (fv) {
     tiles.push({ label: "Current at forward vertex", tip: "Rise over the post-peak minimum, as a share of the largest forward peak", value: fv.rise_fraction !== null ? `${(fv.rise_fraction * 100).toFixed(0)}%` : "n/a",
       sub: fv.rising ? "still rising" : "decaying or flat", flag: fv.rising });
   }
   $("#key-stats").innerHTML = tiles.map((t) => `
-    <div class="stat ${t.flag ? "flag" : ""}" title="${esc(t.tip)}${t.flag ? " · outside the rule threshold" : ""}">
+    <div class="stat ${t.flag ? "flag" : ""}" title="${esc(t.tip)}${t.flag ? ", outside the rule threshold" : ""}">
       <div class="stat-label">${esc(t.label)}</div>
       <div class="stat-value">${esc(t.value)}</div>
-      <div class="stat-sub">${esc(t.sub)}${t.flag ? " · flagged" : ""}</div>
+      <div class="stat-sub">${esc(t.sub)}${t.flag ? ", flagged" : ""}</div>
     </div>`).join("") +
-    `<p class="muted small" style="grid-column:1/-1;margin:0">Flagged tiles exceed a published rule threshold (see each explanation). Flags are not verdicts.</p>`;
+    `<p class="muted small stats-note">Flagged tiles exceed a published rule threshold (see each explanation). Flags are not verdicts.</p>`;
 }
 
 function renderObserved() {
@@ -688,7 +696,7 @@ function renderObserved() {
         <div class="table-wrap"><table>
           <thead><tr><th>Peak</th><th>Sweep</th><th>E<sub>p</sub> / V</th><th>Height / ${esc(unit)}</th><th>FWHM / mV</th><th></th></tr></thead>
           <tbody>${peakRows || `<tr><td colspan="6" class="muted">No peaks above the detection threshold.</td></tr>`}</tbody></table></div>
-        <div class="table-wrap" style="margin-top:10px"><table>
+        <div class="table-wrap table-spaced"><table>
           <thead><tr><th>Pair</th><th>ΔE<sub>p</sub> / mV</th><th>Midpoint / V</th><th>Height ratio</th>${a.metadata.process_type === "dissolved_species" ? "<th>Nicholson</th>" : ""}<th>Width ratio</th></tr></thead>
           <tbody>${pairRows || `<tr><td colspan="6" class="muted">No forward/return pair.</td></tr>`}</tbody></table></div>
         <p class="muted small">Pairs are geometric (matched by potential order), not mechanistic assignments. Potentials: ${esc(a.display.potential_label)}.</p>
@@ -779,11 +787,10 @@ function renderReport() {
         <div class="ev-status">${evidenceBadge(h.evidence_status)}</div>
         <p>${esc(h.statement)}</p>
         <div class="label">Connected to observed features</div>
-        <ul>${h.observations.map((o) => `<li>${esc(o)}</li>`).join("")}${(h.metadata_gaps || []).map((g) => `<li class="small" style="color:var(--bad)">Missing metadata: ${esc(g)}</li>`).join("")}</ul>
+        <ul>${h.observations.map((o) => `<li>${esc(o)}</li>`).join("")}${(h.metadata_gaps || []).map((g) => `<li class="small is-bad">Missing metadata: ${esc(g)}</li>`).join("")}</ul>
         ${(h.evidence || []).length ? `<div class="label">Evidence</div>${h.evidence.map((e) => `
           <div class="passage">“${passageHtml({ text: e.passage, highlights: [] })}”
-            <div class="passage-meta">${safeUrl(e.link) ? `<a href="${esc(safeUrl(e.link))}" target="_blank" rel="noopener noreferrer">${esc(e.title)}</a>` : esc(e.title)}${e.year ? ` (${esc(e.year)})` : ""}
-            · <span class="badge ${LEVEL_CLASS[e.level] || "b-none"}">${esc(e.level)}</span> <span class="app-level">${esc(e.applicability)}</span>${e.cached ? ` <span class="badge b-cached">cached</span>` : ""}</div></div>`).join("")}` : ""}
+            <div class="passage-meta">${safeUrl(e.link) ? `<a href="${esc(safeUrl(e.link))}" target="_blank" rel="noopener noreferrer">${esc(e.title)}</a>` : esc(e.title)}${e.year ? ` (${esc(e.year)})` : ""}<br><span class="badge ${LEVEL_CLASS[e.level] || "b-none"}">${esc(e.level)}</span> <span class="app-level">${esc(e.applicability)}</span>${e.cached ? ` <span class="badge b-cached">cached</span>` : ""}</div></div>`).join("")}` : ""}
         ${(h.evidence_limits || []).length ? `<div class="label">Limits</div><ul>${h.evidence_limits.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
         <details class="disclose"><summary>Rule and assumptions</summary><ul><li>Rule: ${esc(h.trigger_rule)}</li>
           ${h.assumptions.map((x) => `<li>${esc(x)}</li>`).join("")}${h.background ? `<li>Background: ${esc(h.background)}</li>` : ""}</ul></details>
@@ -909,9 +916,9 @@ function renderEvidence() {
   } else {
     head = `<div class="query-list">${ev.queries.map((q) => {
       const n = q.log?.results_count;
-      const when = q.log?.retrieved_at ? ` · retrieved ${esc(q.log.retrieved_at)}` : "";
-      const err = q.log?.error ? `<span class="small" style="color:var(--bad)">${esc(q.log.error)}</span>` : "";
-      return `<div class="query-row">${statusChip(q.status)}<code>${esc(q.query)}</code><span class="q-purpose">${esc(q.purpose)}${n !== undefined ? ` · ${n} results` : ""}${when}</span>${err}</div>`;
+      const when = q.log?.retrieved_at ? `, retrieved ${esc(q.log.retrieved_at)}` : "";
+      const err = q.log?.error ? `<span class="small is-bad">${esc(q.log.error)}</span>` : "";
+      return `<div class="query-row">${statusChip(q.status)}<code>${esc(q.query)}</code><span class="q-purpose">${esc(q.purpose)}${n !== undefined ? `, ${n} results` : ""}${when}</span>${err}</div>`;
     }).join("")}
     ${ev.extractPlan.length ? `<div class="query-row"><span class="small"><strong>SerpApi Extract:</strong> ${ev.extractPlan.filter((x) => !["pending", "running"].includes(x.status)).length}/${ev.extractPlan.length} pages retrieved</span>
       ${ev.extractPlan.some((x) => x.status === "running") ? `<span class="spinner"></span>` : ""}</div>` : ""}</div>`;
@@ -949,29 +956,29 @@ function renderEvidence() {
     const passages = [...grouped.values()]
       .sort((p, q) => (p.labels.length === 1 && p.hypothesis_id === "context") - (q.labels.length === 1 && q.hypothesis_id === "context"))
       .slice(0, 3)
-      .map((p) => `<div class="passage">“${passageHtml(p)}”<div class="passage-meta">${p.labels.map(esc).join(" · ")} — ${esc(p.location)}${p.verbatim_verified ? " · verbatim ✓" : ""}</div></div>`)
+      .map((p) => `<div class="passage">“${passageHtml(p)}”<div class="passage-meta">${p.labels.map(esc).join("; ")}<br>${esc(p.location)}${p.verbatim_verified ? ", verbatim ✓" : ""}</div></div>`)
       .join("") || `<span class="muted small">No passage matched the hypotheses' terms.</span>`;
-    const conds = (src.conditions || []).map((c) => `<span class="chip c-${esc(c.status)}" title="${esc(c.note)}${c.paper ? " · paper: " + esc(c.paper) : ""}">${STATUS_TEXT[c.status] || ""} ${esc(c.condition)}</span>`).join("");
+    const conds = (src.conditions || []).map((c) => `<span class="chip c-${esc(c.status)}" title="${esc(c.note)}${c.paper ? ". Paper: " + esc(c.paper) : ""}">${STATUS_TEXT[c.status] || ""} ${esc(c.condition)}</span>`).join("");
     const app = src.applicability || {};
     const diffs = [
       ...(app.differences || []).map((d) => `<li>${esc(d.note)}</li>`),
       ...((app.not_stated || []).length ? [`<li class="muted">Not stated in retrieved text: ${esc(app.not_stated.join(", "))}</li>`] : []),
     ].join("");
     return `<tr>
-      <td style="min-width:200px"><div class="src-title">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(src.title)}</a>` : esc(src.title)}</div>
-        <div class="src-meta">${esc(src.venue || "")}${src.year ? ` · ${esc(src.year)}` : ""}${src.cited_by ? ` · cited by ${esc(src.cited_by)}` : ""}</div>
-        <div class="src-meta">${esc(linkNote)}${src.cached ? ` · <span class="badge b-cached">cached ${esc(src.retrieved_at || "")}</span>` : ""}</div></td>
-      <td style="min-width:280px">${passages}</td>
+      <td class="col-src"><div class="src-title">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(src.title)}</a>` : esc(src.title)}</div>
+        <div class="src-meta">${esc(src.venue || "")}${src.year ? `, ${esc(src.year)}` : ""}${src.cited_by ? `, cited by ${esc(src.cited_by)}` : ""}</div>
+        <div class="src-meta">${esc(linkNote)}${src.cached ? ` <span class="badge b-cached">cached ${esc(src.retrieved_at || "")}</span>` : ""}</div></td>
+      <td class="col-pass">${passages}</td>
       <td>${extracting ? `<span class="spinner"></span>` : `<span class="badge ${LEVEL_CLASS[src.evidence_level] || "b-none"}">${esc(src.evidence_level)}</span>`}
-        <div class="src-meta" style="margin-top:4px">${esc(src.content?.reason || "")}</div></td>
-      <td style="min-width:150px"><div class="app-level ${APP_CLASS[app.level] || ""}" style="background:none">${esc(app.level || "")}</div><div class="cond">${conds}</div></td>
-      <td style="min-width:200px">${diffs ? `<ul class="diff-list">${diffs}</ul>` : `<span class="muted small">None found in retrieved text.</span>`}</td>
+        <div class="src-meta src-reason">${esc(src.content?.reason || "")}</div></td>
+      <td class="col-app"><div class="app-level app-${APP_CLASS[app.level] || "none"}">${esc(app.level || "")}</div><div class="cond">${conds}</div></td>
+      <td class="col-diff">${diffs ? `<ul class="diff-list">${diffs}</ul>` : `<span class="muted small">None found in retrieved text.</span>`}</td>
     </tr>`;
   }).join("");
   $("#evidence-table").innerHTML = `<div class="table-wrap"><table class="ev-table">
     <thead><tr><th>Paper &amp; source link</th><th>Retrieved passage (verbatim)</th><th>Evidence level</th><th>Conditions vs yours</th><th>Differences / missing</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
-    <p class="muted small">✓ match · ≈ related · ✗ differs · ? not stated in the retrieved text · – not entered by you. Hover chips for details. Search snippets are Google Scholar excerpts, not full-paper evidence.</p>`;
+    <p class="muted small">✓ match, ≈ related, ✗ differs, ? not stated in the retrieved text, – not entered by you. Hover chips for details. Search snippets are Google Scholar excerpts, not full-paper evidence.</p>`;
 }
 
 // ------------------------------------------------------------------ drawer
@@ -1017,14 +1024,14 @@ function renderDrawer() {
         ${l.results_count !== undefined ? `<dt>Results</dt><dd>${esc(l.results_count)}${l.total_results ? ` of about ${esc(l.total_results)}` : ""}</dd>` : ""}
         ${l.classification ? `<dt>Content</dt><dd>${esc(l.classification)}</dd>` : ""}
         ${l.fallback_note ? `<dt>Note</dt><dd>${esc(l.fallback_note)}</dd>` : ""}
-        ${l.error ? `<dt>Error</dt><dd style="color:var(--bad)">${esc(l.error)}</dd>` : ""}
+        ${l.error ? `<dt>Error</dt><dd class="is-bad">${esc(l.error)}</dd>` : ""}
         <dt>Credits</dt><dd>${esc(l.credits ?? 0)}</dd>
       </dl></div>`;
   }).join("");
   const plan = (state.analysis?.evidence_plan || []).map((q) => `<li><code>${esc(q.query)}</code> <span class="muted">— ${esc(q.purpose)}</span></li>`).join("");
   $("#drawer-body").innerHTML = summary +
-    (plan ? `<h3 style="margin-top:16px">Planned Google Scholar queries</h3><ul class="small">${plan}</ul>` : "") +
-    `<h3 style="margin-top:16px">Calls</h3>` + (entries || `<p class="muted">No SerpApi calls yet.</p>`);
+    (plan ? `<h3 class="drawer-sub">Planned Google Scholar queries</h3><ul class="small">${plan}</ul>` : "") +
+    `<h3 class="drawer-sub">Calls</h3>` + (entries || `<p class="muted">No SerpApi calls yet.</p>`);
 }
 
 // ------------------------------------------------------------------ dialogs

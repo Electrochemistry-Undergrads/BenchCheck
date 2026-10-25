@@ -3,103 +3,116 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BenchCheck</title>
+  <title>BenchCheck, cyclic voltammetry workspace</title>
   <meta name="description" content="Cyclic voltammetry troubleshooting: measured observations, traceable literature evidence, and a clear next check.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232456c7'/%3E%3Cpath d='M5 19c3 0 4-9 7-9s3 6 5 6 2-4 4-4 3 3 6 3' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3Cpath d='M27 13c-3 0-4 9-7 9s-3-6-5-6-2 4-4 4-3-3-6-3' stroke='%23ffb37a' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2322262c'/%3E%3Cpath d='M5 19c3 0 4-9 7-9s3 6 5 6 2-4 4-4 3 3 6 3' stroke='%2393b8f0' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3Cpath d='M27 13c-3 0-4 9-7 9s-3-6-5-6-2 4-4 4-3-3-6-3' stroke='%23f2c05a' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@400;500&family=Atkinson+Hyperlegible+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/vendor/plotly-2.35.3.min.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to analysis workspace</a>
   <header class="topbar">
-    <div class="brand">
-      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-        <rect width="32" height="32" rx="7" fill="var(--primary)"/>
-        <path d="M5 19c3 0 4-9 7-9s3 6 5 6 2-4 4-4 3 3 6 3" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-        <path d="M27 13c-3 0-4 9-7 9s-3-6-5-6-2 4-4 4-3-3-6-3" stroke="#c1d68a" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-      </svg>
-      <div>
-        <div class="brand-name">BenchCheck</div>
-        <div class="brand-tag">Electrochemistry, with clarity.</div>
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="BenchCheck home">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+          <path class="logo-fwd" d="M5 19c3 0 4-9 7-9s3 6 5 6 2-4 4-4 3 3 6 3"/>
+          <path class="logo-ret" d="M27 13c-3 0-4 9-7 9s-3-6-5-6-2 4-4 4-3-3-6-3"/>
+        </svg>
+        <span class="brand-name">BenchCheck</span>
+        <span class="brand-tag">Electrochemistry, with clarity.</span>
+      </a>
+      <span class="workspace-label">CV workspace</span>
+      <div class="topbar-actions">
+        <span id="evidence-pill" class="pill pill-muted" role="status" title="Evidence source">Evidence: checking…</span>
+        <button id="open-drawer" class="btn" type="button">Evidence log</button>
       </div>
-    </div>
-    <div class="workspace-label"><span class="status-dot"></span> CV workspace</div>
-    <div class="topbar-actions">
-      <span id="evidence-pill" class="pill pill-muted" title="Evidence source">Evidence: checking…</span>
-      <button id="open-drawer" class="btn btn-ghost" type="button">Evidence log</button>
     </div>
   </header>
 
-  <main id="main" class="container">
+  <main id="main" class="container workbench">
     <section id="intro" class="intro" aria-labelledby="page-title">
-      <div>
-        <p class="eyebrow">YOUR EXPERIMENT. A CLEARER NEXT STEP.</p>
-        <h1 id="page-title">Make sense of<br>your voltammogram<span>.</span></h1>
-        <p class="intro-copy">Turn your CV data into measured observations, relevant literature, and a practical next check.</p>
-      </div>
-      <div class="intro-note"><span class="note-rule"></span><p>From the bench<br>to a better question.</p><span class="note-caption">CYCLIC VOLTAMMETRY / WORKSPACE</span></div>
+      <h1 id="page-title">Make sense of your voltammogram</h1>
+      <p class="intro-copy">Turn your CV data into measured observations, relevant literature, and a practical next check.</p>
+      <p class="intro-note">From the bench to a better question.</p>
     </section>
+
     <ol class="workflow" aria-label="Analysis progress">
-      <li id="progress-upload" aria-current="step"><span>01</span> Upload data</li>
-      <li id="progress-confirm"><span>02</span> Confirm experiment</li>
-      <li id="progress-review"><span>03</span> Review &amp; investigate</li>
+      <li id="progress-upload" aria-current="step"><span class="workflow-n">1</span> Upload data</li>
+      <li id="progress-confirm"><span class="workflow-n">2</span> Confirm experiment</li>
+      <li id="progress-review"><span class="workflow-n">3</span> Review &amp; investigate</li>
     </ol>
-    <details id="setup" class="setup" open>
-      <summary class="setup-summary">
-        <span class="setup-title">Experiment setup</span>
-        <span id="setup-line" class="setup-line">Start with an export from your instrument.</span>
-      </summary>
 
-      <div class="setup-grid">
-        <section class="card upload-card" aria-labelledby="h-data">
-          <div class="section-kicker">01 / YOUR DATA</div>
-          <h2 id="h-data">Bring your experiment.</h2>
-          <p class="section-copy">Upload a cyclic voltammetry export to get started.</p>
-          <label id="dropzone" class="dropzone" for="file-input" tabindex="0" role="button" aria-label="Choose a cyclic voltammetry data file" aria-describedby="upload-help">
-            <input id="file-input" type="file" accept=".csv,.txt,.tsv,.dat" hidden>
-            <span class="upload-symbol" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M16 21V6m-6 6 6-6 6 6M7 21v5h18v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <span id="upload-title" class="dz-main">Drop your data here</span>
-            <span class="dz-sub">or <span class="browse-link">browse files <span aria-hidden="true">↗</span></span></span>
-            <span class="file-types">CSV <span>·</span> TXT <span>·</span> TSV <span>·</span> DAT</span>
-          </label>
-          <p id="upload-help" class="upload-help">Potential and current columns are needed. A time column enables additional scan-rate and charge checks.</p>
-          <label class="toggle synthetic-toggle"><input id="data-synthetic" type="checkbox"> My file contains simulated data</label>
-          <div id="file-info" class="file-info" role="status" aria-live="polite" hidden></div>
-        </section>
+    <div class="bench">
+      <details id="setup" class="setup" open>
+        <summary class="setup-summary">
+          <span class="setup-title">Experiment setup</span>
+          <span id="setup-line" class="setup-line">Start with an export from your instrument.</span>
+        </summary>
 
-        <section id="mapping-card" class="card" aria-labelledby="h-map" hidden>
-          <h2 id="h-map" tabindex="-1"><span class="step">2</span>Columns &amp; units <span class="hint">confirm before analysis</span></h2>
-          <div id="mapping"></div>
-        </section>
+        <div class="setup-grid">
+          <section class="panel upload-card" aria-labelledby="h-data">
+            <h2 id="h-data">Bring your experiment.</h2>
+            <p class="section-copy">Upload a cyclic voltammetry export to get started.</p>
+            <label id="dropzone" class="dropzone" for="file-input" tabindex="0" role="button" aria-label="Choose a cyclic voltammetry data file" aria-describedby="upload-help">
+              <input id="file-input" type="file" accept=".csv,.txt,.tsv,.dat" hidden>
+              <svg class="upload-symbol" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 21V6m-6 6 6-6 6 6M7 21v5h18v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span id="upload-title" class="dz-main">Drop your data here</span>
+              <span class="dz-sub">or <span class="browse-link">browse files</span></span>
+              <span class="file-types">CSV, TXT, TSV or DAT</span>
+            </label>
+            <p id="upload-help" class="upload-help">Potential and current columns are needed. A time column enables additional scan-rate and charge checks.</p>
+            <label class="toggle synthetic-toggle"><input id="data-synthetic" type="checkbox"> My file contains simulated data</label>
+            <div id="file-info" class="file-info" role="status" aria-live="polite" hidden></div>
+          </section>
 
-        <section id="meta-card" class="card card-wide" aria-labelledby="h-meta" hidden>
-          <h2 id="h-meta"><span class="step">3</span>Experiment details <span class="hint">used to compare literature conditions</span></h2>
-          <form id="meta-form" class="meta-grid" autocomplete="off"></form>
-          <div class="analyze-row">
-            <div id="analyze-msg" class="muted"></div>
-            <button id="analyze-btn" class="btn btn-primary" type="button">Confirm &amp; analyze</button>
-          </div>
-        </section>
-      </div>
-    </details>
+          <section id="mapping-card" class="panel" aria-labelledby="h-map" hidden>
+            <div class="panel-head">
+              <h2 id="h-map" tabindex="-1">Columns &amp; units</h2>
+              <p class="panel-note">Confirm before analysis.</p>
+            </div>
+            <div id="mapping"></div>
+          </section>
 
-    <section id="welcome-guide" class="welcome-guide" aria-labelledby="guide-title">
-      <div class="section-kicker">A METHOD YOU CAN FOLLOW</div>
-      <h2 id="guide-title">Less guesswork.<br>More understanding.</h2>
-      <div class="guide-step"><span>01</span><div><h3>See what happened</h3><p>Peaks, charge balance, and cycle trends, measured directly from your data.</p></div></div>
-      <div class="guide-step"><span>02</span><div><h3>Put it in context</h3><p>Find literature through SerpApi and compare the experimental conditions.</p></div></div>
-      <div class="guide-step"><span>03</span><div><h3>Choose your next check</h3><p>Explore possible explanations and the measurements that could distinguish them.</p></div></div>
-      <div class="guide-foot"><span class="status-dot"></span> Traceable evidence. Visible assumptions.</div>
-    </section>
+          <section id="meta-card" class="panel card-wide" aria-labelledby="h-meta" hidden>
+            <div class="panel-head">
+              <h2 id="h-meta">Experiment details</h2>
+              <p class="panel-note">Used to compare literature conditions.</p>
+            </div>
+            <form id="meta-form" class="meta-grid" autocomplete="off"></form>
+            <div class="analyze-row">
+              <div id="analyze-msg" class="muted"></div>
+              <button id="analyze-btn" class="btn btn-primary" type="button">Confirm &amp; analyze</button>
+            </div>
+          </section>
+        </div>
+      </details>
+
+      <section id="welcome-guide" class="welcome-guide" aria-labelledby="guide-title">
+        <h2 id="guide-title">Less guesswork.<br>More understanding.</h2>
+        <ol class="trail">
+          <li><h3>See what happened</h3><p>Peaks, charge balance, and cycle trends, measured directly from your data.</p></li>
+          <li><h3>Put it in context</h3><p>Find literature through SerpApi and compare the experimental conditions.</p></li>
+          <li><h3>Choose your next check</h3><p>Explore possible explanations and the measurements that could distinguish them.</p></li>
+        </ol>
+        <p class="guide-foot">Traceable evidence. Visible assumptions.</p>
+      </section>
+    </div>
+
     <div id="error-box" class="alert alert-error" role="alert" hidden></div>
 
-    <section id="results" hidden>
-      <div class="results-heading"><div><p class="eyebrow">YOUR ANALYSIS</p><h1>What your experiment shows.</h1></div><span class="results-caption">Observe. Compare. Investigate.</span></div>
+    <section id="results" class="results" hidden>
+      <div class="results-heading">
+        <h2 class="results-title">What your experiment shows.</h2>
+        <p class="results-caption">Observe. Compare. Investigate.</p>
+      </div>
       <div id="synthetic-banner" class="banner-synthetic" hidden></div>
       <div id="notices"></div>
 
       <div class="grid-main">
-        <section class="card plot-card" aria-labelledby="h-plot">
+        <section class="plot-card" aria-labelledby="h-plot">
           <div class="card-head">
             <h2 id="h-plot" tabindex="-1">Cyclic voltammogram</h2>
             <div class="plot-tools">
@@ -121,27 +134,33 @@
         </section>
 
         <aside class="side-col">
-          <section class="card next-card" aria-labelledby="h-next">
-            <p class="section-kicker">WHERE TO GO FROM HERE</p><h2 id="h-next">Your next check <span aria-hidden="true">↗</span></h2>
+          <section class="next-card" aria-labelledby="h-next">
+            <h2 id="h-next">Your next check</h2>
             <div id="next-check"></div>
           </section>
-          <section class="card" aria-labelledby="h-key">
+          <section class="readings" aria-labelledby="h-key">
             <h2 id="h-key">Key observations</h2>
             <div id="key-stats" class="stats"></div>
           </section>
         </aside>
       </div>
 
-      <section class="card" aria-labelledby="h-obs">
+      <section class="panel" aria-labelledby="h-obs">
         <div class="card-head">
-          <h2 id="h-obs">Observed <span class="hint">calculated from your data · no mechanism assigned</span></h2>
+          <div class="panel-head">
+            <h2 id="h-obs">Observed</h2>
+            <p class="panel-note">Calculated from your data, no mechanism assigned.</p>
+          </div>
         </div>
         <div id="observed"></div>
       </section>
 
-      <section class="card" aria-labelledby="h-ev">
+      <section class="panel" aria-labelledby="h-ev">
         <div class="card-head">
-          <h2 id="h-ev">Literature evidence <span class="hint">Google Scholar + Extract via SerpApi</span></h2>
+          <div class="panel-head">
+            <h2 id="h-ev">Literature evidence</h2>
+            <p class="panel-note">Google Scholar and Extract, via SerpApi.</p>
+          </div>
           <div class="ev-actions">
             <label class="toggle" title="Reuse previously retrieved responses (labeled cached) instead of new live calls"><input type="checkbox" id="opt-prefer-cache"> reuse cached responses</label>
             <button id="evidence-btn" class="btn btn-primary" type="button">Find literature evidence</button>
@@ -151,7 +170,7 @@
         <div id="evidence-table"></div>
       </section>
 
-      <section class="card" aria-labelledby="h-report">
+      <section class="panel" aria-labelledby="h-report">
         <div class="card-head">
           <h2 id="h-report">Troubleshooting report</h2>
           <div class="export">
@@ -163,18 +182,24 @@
         <div id="report" class="report-cols"></div>
       </section>
 
-      <details class="card glossary">
+      <details class="panel glossary">
         <summary><h2>Terms used</h2></summary>
         <dl id="glossary"></dl>
       </details>
     </section>
-    <footer class="footer"><span>BenchCheck <span class="footer-divider">/</span> Built for the next question.</span><span>Measurements from your data · Literature via SerpApi</span></footer>
+
+    <footer class="footer">
+      <p>BenchCheck. Built for the next question.</p>
+      <p>Measurements from your data. Literature via SerpApi.</p>
+    </footer>
   </main>
 
   <aside id="drawer" class="drawer" aria-hidden="true" aria-labelledby="h-drawer" role="dialog" aria-modal="true" inert>
     <div class="drawer-head">
       <h2 id="h-drawer">Evidence log</h2>
-      <button id="close-drawer" class="btn btn-ghost" type="button" aria-label="Close evidence log">✕</button>
+      <button id="close-drawer" class="btn btn-quiet btn-icon" type="button" aria-label="Close evidence log">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
     </div>
     <div id="drawer-body" class="drawer-body"></div>
   </aside>
