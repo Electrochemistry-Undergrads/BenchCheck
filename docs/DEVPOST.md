@@ -44,7 +44,7 @@ All of these are measured by `scripts/evaluate.py`:
 - Surface-confined peak current within **0.93%** of theory; FWHM **89.9 mV** vs 90.6 mV.
 - log i<sub>p</sub> vs log v slope **0.500** across 10–500 mV/s.
 - On the labeled synthetic examples, BenchCheck flagged **exactly** the mechanisms the generator contained. For the weak-return case it recommended the check (lower the vertex) that the clear example shows resolves the problem.
-- 91 automated tests; 16/16 evaluation checks pass; works at phone width.
+- 93 automated tests; 16/16 evaluation checks pass; works at phone width.
 
 *Fill in before submitting:* results of the live SerpApi run and the human evidence audit (how many cited passages actually support their hypothesis). Report the real counts.
 
@@ -62,7 +62,13 @@ All of these are measured by `scripts/evaluate.py`:
 
 ## Built with
 
-Python · FastAPI · NumPy · SciPy · httpx · Plotly.js · SerpApi (Google Scholar API, Extract API) · Claude Code (AI coding assistant)
+Python · FastAPI · NumPy · SciPy · httpx · Plotly.js · SerpApi (Google Scholar API, Extract API) · Claude Code · OpenAI Codex (AI coding assistants)
+
+## AI assistance disclosure
+
+Anthropic Claude Code assisted with the initial implementation, tests, and documentation. OpenAI Codex assisted with the frontend redesign, verification, and submission guidance. The project uses deterministic numerical analysis and evidence matching; AI coding assistance is separate from the running evidence pipeline. Select OpenAI and Anthropic in Devpost's AI-tools field and disclose this contribution accurately to judges.
+
+Before submission, complete the open items in [HACKTX.md](HACKTX.md). The demo video must show the current upload-based interface. Do not present the validation fixtures as experimental measurements.
 
 ## Try it out
 

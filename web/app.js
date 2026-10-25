@@ -85,10 +85,9 @@ const blankMetadata = () => ({ process_type: "unknown", solvent: "unknown", scan
 
 const state = {
   status: null,
-  examples: [],
   file: null,
   fileName: null,
-  example: null,
+  synthetic: false,
   inspect: null,
   mapping: { potential: null, current: null, time: null },
   units: { potential: "V", current: "A", time: "s" },
@@ -115,20 +114,27 @@ async function init() {
   renderGlossary();
   bindStaticEvents();
   try {
-    const [status, examples] = await Promise.all([api("/api/status"), api("/api/examples")]);
-    state.status = status;
-    state.examples = examples;
+    state.status = await api("/api/status");
   } catch (e) {
     showError(`Could not reach the BenchCheck server: ${e.message}`);
     return;
   }
   renderEvidencePill();
-  renderExamples();
   renderDrawer();
 }
 
 function bindStaticEvents() {
   const dz = $("#dropzone");
+  dz.addEventListener("keydown", (e) => {
+    if (e.target === dz && ["Enter", " "].includes(e.key)) {
+      e.preventDefault();
+      $("#file-input").click();
+    }
+  });
+  $("#data-synthetic").addEventListener("change", async (e) => {
+    state.synthetic = e.target.checked;
+    if (state.analysis) await runAnalysis();
+  });
   $("#file-input").addEventListener("change", (e) => e.target.files[0] && loadFile(e.target.files[0]));
   dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
   dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
@@ -143,7 +149,16 @@ function bindStaticEvents() {
   $("#open-drawer").addEventListener("click", () => toggleDrawer(true));
   $("#close-drawer").addEventListener("click", () => toggleDrawer(false));
   $("#scrim").addEventListener("click", () => toggleDrawer(false));
-  document.addEventListener("keydown", (e) => e.key === "Escape" && toggleDrawer(false));
+  document.addEventListener("keydown", (e) => {
+    if (!$("#drawer").classList.contains("open")) return;
+    if (e.key === "Escape") toggleDrawer(false);
+    if (e.key === "Tab") {
+      const items = $$("button, a[href]", $("#drawer"));
+      const first = items[0], last = items.at(-1);
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
   $("#btn-png").addEventListener("click", () =>
     Plotly.downloadImage("plot", { format: "png", width: 1400, height: 800, filename: `benchcheck-cv-${(state.fileName || "data").replace(/\.\w+$/, "")}` }));
   $("#btn-scale").addEventListener("click", openScaleDialog);
@@ -179,35 +194,12 @@ function renderEvidencePill() {
 
 // ------------------------------------------------------------------ data loading
 
-function renderExamples() {
-  $("#examples").innerHTML = state.examples
-    .map((ex) => `
-      <button class="example ${state.example?.id === ex.id ? "active" : ""}" type="button" data-example="${esc(ex.id)}">
-        <span class="example-title">${esc(ex.title)} <span class="badge b-synthetic">SYNTHETIC</span></span>
-        <span class="example-sum">${esc(ex.summary)}</span>
-      </button>`)
-    .join("");
-  $$("[data-example]").forEach((b) =>
-    b.addEventListener("click", () => loadExample(state.examples.find((x) => x.id === b.dataset.example))));
-}
-
-async function loadExample(ex) {
-  try {
-    const res = await fetch(`/examples/${encodeURIComponent(ex.file)}`);
-    if (!res.ok) throw new Error(`Could not load example (HTTP ${res.status})`);
-    const blob = await res.blob();
-    await loadFile(new File([blob], ex.file, { type: "text/csv" }), ex);
-  } catch (e) {
-    showError(e.message);
-  }
-}
-
-async function loadFile(file, example = null) {
+async function loadFile(file) {
   showError("");
-  const wasExample = !!state.example;
   state.file = file;
   state.fileName = file.name;
-  state.example = example;
+  state.synthetic = $("#data-synthetic").checked;
+  state.inspect = null;
   state.analysis = null;
   state.report = null;
   state.referenceConversion = null;
@@ -215,49 +207,71 @@ async function loadFile(file, example = null) {
   state.selectedCycle = null;
   state.evidence = freshEvidence();
   $("#results").hidden = true;
+  $("#mapping-card").hidden = true;
+  $("#meta-card").hidden = true;
+  $("#file-info").hidden = true;
+  $("#analyze-btn").disabled = true;
+  $("#dropzone").setAttribute("aria-busy", "true");
+  $("#upload-title").textContent = "Reading your file…";
+  const requestId = state.loadRequest = (state.loadRequest || 0) + 1;
+  updateWorkspace("upload");
   const form = new FormData();
   form.append("file", file, file.name);
   try {
-    state.inspect = await api("/api/inspect", { method: "POST", form });
+    const inspection = await api("/api/inspect", { method: "POST", form });
+    if (requestId !== state.loadRequest) return;
+    state.inspect = inspection;
   } catch (e) {
-    showError(`Could not read ${file.name}: ${e.message}`);
+    if (requestId === state.loadRequest) showError(`Could not read ${file.name}: ${e.message}`);
     return;
+  } finally {
+    if (requestId === state.loadRequest) {
+      $("#dropzone").removeAttribute("aria-busy");
+      $("#upload-title").textContent = state.inspect ? "Choose a different file" : "Drop your data here";
+      $("#file-input").value = "";
+    }
   }
   const sug = state.inspect.suggested;
   state.suggested = sug;
-  if (example) {
-    state.mapping = { potential: null, current: null, time: null, ...example.mapping };
-    state.units = { ...state.units, ...example.units };
-    state.convention = example.current_convention || "iupac";
-    state.metadata = { ...blankMetadata(), ...structuredClone(example.metadata) };
-  } else {
-    state.mapping = {
-      potential: sug.potential?.column || null,
-      current: sug.current?.column || null,
-      time: sug.time?.column || null,
-    };
-    state.units = {
-      potential: sug.potential?.unit && UNITS.potential.includes(sug.potential.unit) ? sug.potential.unit : "V",
-      current: sug.current?.unit && UNITS.current.includes(sug.current.unit) ? sug.current.unit : "A",
-      time: sug.time?.unit && UNITS.time.includes(sug.time.unit) ? sug.time.unit : "s",
-    };
-    state.convention = "iupac";
-    if (wasExample) state.metadata = blankMetadata();
-  }
+  state.mapping = {
+    potential: sug.potential?.column || null,
+    current: sug.current?.column || null,
+    time: sug.time?.column || null,
+  };
+  state.units = {
+    potential: sug.potential?.unit && UNITS.potential.includes(sug.potential.unit) ? sug.potential.unit : "V",
+    current: sug.current?.unit && UNITS.current.includes(sug.current.unit) ? sug.current.unit : "A",
+    time: sug.time?.unit && UNITS.time.includes(sug.time.unit) ? sug.time.unit : "s",
+  };
+  state.convention = "iupac";
   const t = state.inspect.table;
   $("#file-info").hidden = false;
   $("#file-info").innerHTML = `
     <strong>${esc(t.filename)}</strong> · ${esc(t.n_rows)} rows · ${esc(t.columns.length)} columns · ${esc(t.delimiter)}-delimited
     ${t.decimal === "," ? " · decimal commas" : ""}<br>
     <span class="muted small">SHA-256 <code>${esc(t.sha256.slice(0, 16))}…</code>${t.notes.length ? " · " + esc(t.notes.join(" ")) : ""}</span>
-    ${example ? `<br><span class="badge b-synthetic">SYNTHETIC EXAMPLE</span> <span class="small">Column mapping and metadata filled from the example's metadata file.</span>` : ""}`;
-  renderExamples();
+    `;
   renderMapping();
   renderMetaForm();
   $("#mapping-card").hidden = false;
   $("#meta-card").hidden = false;
   $("#setup").open = true;
   updateSetupLine();
+  $("#analyze-btn").disabled = false;
+  updateWorkspace("confirm");
+  $("#h-map").focus({ preventScroll: true });
+}
+
+function updateWorkspace(stage) {
+  const loaded = stage !== "upload";
+  $("#main").classList.toggle("has-file", loaded);
+  $("#intro").hidden = loaded;
+  $("#welcome-guide").hidden = loaded;
+  ["upload", "confirm", "review"].forEach((step) => {
+    const el = $(`#progress-${step}`);
+    if (step === stage) el.setAttribute("aria-current", "step");
+    else el.removeAttribute("aria-current");
+  });
 }
 
 function columnSelect(role, allowNone) {
@@ -265,18 +279,17 @@ function columnSelect(role, allowNone) {
   const cur = state.mapping[role];
   const opts = (allowNone ? [`<option value="">— none —</option>`] : [`<option value="">— select —</option>`])
     .concat(cols.map((c) => `<option value="${esc(c)}" ${c === cur ? "selected" : ""}>${esc(c)}</option>`));
-  return `<select data-map="${role}">${opts.join("")}</select>`;
+  return `<select aria-label="${role} column" data-map="${role}">${opts.join("")}</select>`;
 }
 
 function unitSelect(role) {
-  return `<select data-unit="${role}">${UNITS[role]
+  return `<select aria-label="${role} unit" data-unit="${role}">${UNITS[role]
     .map((u) => `<option value="${esc(u)}" ${state.units[role] === u ? "selected" : ""}>${esc(uLabel(u))}</option>`)
     .join("")}</select>`;
 }
 
 function suggestionTag(role) {
   const s = state.suggested[role];
-  if (state.example) return "";
   if (s && s.column === state.mapping[role]) return `<span class="tag-suggested" title="Suggested from ${esc(s.basis)}">suggested</span>`;
   return "";
 }
@@ -356,8 +369,9 @@ function renderMetaForm() {
     } else if (f.type === "quantity") {
       const q = m[f.key] || { value: null, unit: f.units[0] };
       control = `<div class="inline"><input data-qty="${f.key}" type="number" step="any" value="${esc(q.value ?? "")}">
-        <select data-qunit="${f.key}">${f.units.map((u) => `<option ${q.unit === u ? "selected" : ""}>${esc(u)}</option>`).join("")}</select></div>`;
+        <select aria-label="${esc(f.label)} unit" data-qunit="${f.key}">${f.units.map((u) => `<option ${q.unit === u ? "selected" : ""}>${esc(u)}</option>`).join("")}</select></div>`;
     }
+    if (f.type === "radio") return `<fieldset class="${cls}"><legend><span>${esc(f.label)} ${missing}</span></legend>${control}</fieldset>`;
     return `<label class="${cls}"><span>${esc(f.label)} ${missing}</span>${control}</label>`;
   }).join("");
   $("#meta-form").innerHTML = html;
@@ -440,7 +454,7 @@ function buildConfig() {
     reference_conversion: state.referenceConversion,
     normalize_by_area: state.normalize,
     normalize_by_area_confirmed: state.normalize,
-    example_id: state.example?.id || null,
+    example_id: state.synthetic ? "uploaded_synthetic" : null,
   };
 }
 
@@ -474,16 +488,16 @@ async function runAnalysis() {
   $("#results").hidden = false;
   $("#setup").open = false;
   renderResults();
+  updateWorkspace("review");
   await refreshReport();
+  $("#h-plot").focus({ preventScroll: true });
 }
 
 function renderResults() {
   const a = state.analysis;
   const banner = $("#synthetic-banner");
-  if (state.example) {
-    banner.hidden = false;
-    banner.innerHTML = `<strong>SYNTHETIC EXAMPLE DATA.</strong> ${esc(state.example.summary)} Generated by <code>${esc(state.example.generator.script)}</code>; not a measurement.`;
-  } else banner.hidden = true;
+  banner.hidden = !state.synthetic;
+  banner.textContent = "SIMULATED DATA · You marked this file as simulated. These results are not experimental measurements.";
   const notices = [...(a.notices || [])];
   $("#notices").innerHTML = notices.map((n) => `<div class="alert alert-warn">${esc(n)}</div>`).join("");
   renderCycleButtons();
@@ -966,7 +980,13 @@ function toggleDrawer(open) {
   $("#drawer").classList.toggle("open", open);
   $("#drawer").setAttribute("aria-hidden", String(!open));
   $("#scrim").hidden = !open;
-  if (open) renderDrawer();
+  $("#drawer").inert = !open;
+  $("#main").inert = open;
+  $(".topbar").inert = open;
+  if (open) {
+    renderDrawer();
+    $("#close-drawer").focus();
+  } else $("#open-drawer").focus();
 }
 
 function renderDrawer() {

@@ -58,7 +58,7 @@ cp .env.example .env                                   # then put your SerpApi k
 python -m benchcheck                                   # http://127.0.0.1:8000
 ```
 
-Click **Synthetic CV · weak return peak**, then **Confirm & analyze**, then **Find literature evidence**.
+Upload your instrument export, confirm the suggested columns and units, enter your experiment details, then click **Confirm & analyze**. Click **Find literature evidence** to compare relevant papers. The app has no built-in example picker. If you upload simulated data, check **My file contains simulated data** so the analysis and exported reports are labeled accordingly.
 
 Without a key, the numerical analysis works fully and the evidence panel explains that evidence is unavailable (or shows previously retrieved, cached evidence, labeled as cached).
 
@@ -66,7 +66,7 @@ Run the checks:
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest              # 91 tests
+python -m pytest              # 93 tests
 python scripts/evaluate.py    # predefined cases → docs/evaluation_results.md
 ```
 
@@ -211,7 +211,8 @@ Known bias, measured rather than hidden: return/forward peak-height ratios read 
 ## Hackathon notes
 
 - Built for HackTX 2026, targeting the **Best Use of SerpApi** track. All code in this repository was written from scratch starting 2026-10-24 (see the commit history); verify the timing against the official HackTX hacking-period rules. Third-party libraries: FastAPI, NumPy, SciPy, httpx, Uvicorn, Plotly.js (vendored, MIT).
-- Built with AI assistance (Claude Code). Check the official HackTX rules for any disclosure requirements.
+- AI assistance: **Anthropic Claude Code** helped develop the initial implementation, tests, and documentation; **OpenAI Codex** helped redesign and verify the frontend and update submission guidance. Disclose both tools in Devpost. Numerical analysis and literature passage selection run deterministically; a language model does not generate the evidence.
+- See [HackTX submission requirements and remaining checks](docs/HACKTX.md). Project eligibility also depends on the team, judging attendance, public code/video, and submission timing; this repository alone does not establish eligibility.
 
 ## Future work
 

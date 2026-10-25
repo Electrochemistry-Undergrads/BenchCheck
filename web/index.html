@@ -10,46 +10,65 @@
   <script src="/static/vendor/plotly-2.35.3.min.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to analysis workspace</a>
   <header class="topbar">
     <div class="brand">
       <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
         <rect width="32" height="32" rx="7" fill="var(--primary)"/>
         <path d="M5 19c3 0 4-9 7-9s3 6 5 6 2-4 4-4 3 3 6 3" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-        <path d="M27 13c-3 0-4 9-7 9s-3-6-5-6-2 4-4 4-3-3-6-3" stroke="#ffb37a" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        <path d="M27 13c-3 0-4 9-7 9s-3-6-5-6-2 4-4 4-3-3-6-3" stroke="#c1d68a" stroke-width="2.4" fill="none" stroke-linecap="round"/>
       </svg>
       <div>
         <div class="brand-name">BenchCheck</div>
-        <div class="brand-tag">Cyclic voltammetry → measured observations, traceable evidence, a clearer next check</div>
+        <div class="brand-tag">Electrochemistry, with clarity.</div>
       </div>
     </div>
+    <div class="workspace-label"><span class="status-dot"></span> CV workspace</div>
     <div class="topbar-actions">
       <span id="evidence-pill" class="pill pill-muted" title="Evidence source">Evidence: checking…</span>
       <button id="open-drawer" class="btn btn-ghost" type="button">Evidence log</button>
     </div>
   </header>
 
-  <main class="container">
+  <main id="main" class="container">
+    <section id="intro" class="intro" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">YOUR EXPERIMENT. A CLEARER NEXT STEP.</p>
+        <h1 id="page-title">Make sense of<br>your voltammogram<span>.</span></h1>
+        <p class="intro-copy">Turn your CV data into measured observations, relevant literature, and a practical next check.</p>
+      </div>
+      <div class="intro-note"><span class="note-rule"></span><p>From the bench<br>to a better question.</p><span class="note-caption">CYCLIC VOLTAMMETRY / WORKSPACE</span></div>
+    </section>
+    <ol class="workflow" aria-label="Analysis progress">
+      <li id="progress-upload" aria-current="step"><span>01</span> Upload data</li>
+      <li id="progress-confirm"><span>02</span> Confirm experiment</li>
+      <li id="progress-review"><span>03</span> Review &amp; investigate</li>
+    </ol>
     <details id="setup" class="setup" open>
       <summary class="setup-summary">
-        <span class="setup-title">Setup</span>
-        <span id="setup-line" class="setup-line">Load a CSV or a labeled synthetic example to begin.</span>
+        <span class="setup-title">Experiment setup</span>
+        <span id="setup-line" class="setup-line">Start with an export from your instrument.</span>
       </summary>
 
       <div class="setup-grid">
-        <section class="card" aria-labelledby="h-data">
-          <h2 id="h-data"><span class="step">1</span>Data</h2>
-          <label id="dropzone" class="dropzone" for="file-input">
+        <section class="card upload-card" aria-labelledby="h-data">
+          <div class="section-kicker">01 / YOUR DATA</div>
+          <h2 id="h-data">Bring your experiment.</h2>
+          <p class="section-copy">Upload a cyclic voltammetry export to get started.</p>
+          <label id="dropzone" class="dropzone" for="file-input" tabindex="0" role="button" aria-label="Choose a cyclic voltammetry data file" aria-describedby="upload-help">
             <input id="file-input" type="file" accept=".csv,.txt,.tsv,.dat" hidden>
-            <span class="dz-main">Drop a CV export (CSV/TXT) here or <u>browse</u></span>
-            <span class="dz-sub">Needs potential and current columns; a time column enables scan-rate and charge checks.</span>
+            <span class="upload-symbol" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M16 21V6m-6 6 6-6 6 6M7 21v5h18v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span id="upload-title" class="dz-main">Drop your data here</span>
+            <span class="dz-sub">or <span class="browse-link">browse files <span aria-hidden="true">↗</span></span></span>
+            <span class="file-types">CSV <span>·</span> TXT <span>·</span> TSV <span>·</span> DAT</span>
           </label>
-          <div class="examples-head">Or try a labeled example</div>
-          <div id="examples" class="examples"></div>
-          <div id="file-info" class="file-info" hidden></div>
+          <p id="upload-help" class="upload-help">Potential and current columns are needed. A time column enables additional scan-rate and charge checks.</p>
+          <label class="toggle synthetic-toggle"><input id="data-synthetic" type="checkbox"> My file contains simulated data</label>
+          <div id="file-info" class="file-info" role="status" aria-live="polite" hidden></div>
         </section>
 
         <section id="mapping-card" class="card" aria-labelledby="h-map" hidden>
-          <h2 id="h-map"><span class="step">2</span>Columns &amp; units <span class="hint">confirm before analysis</span></h2>
+          <h2 id="h-map" tabindex="-1"><span class="step">2</span>Columns &amp; units <span class="hint">confirm before analysis</span></h2>
           <div id="mapping"></div>
         </section>
 
@@ -64,16 +83,25 @@
       </div>
     </details>
 
+    <section id="welcome-guide" class="welcome-guide" aria-labelledby="guide-title">
+      <div class="section-kicker">A METHOD YOU CAN FOLLOW</div>
+      <h2 id="guide-title">Less guesswork.<br>More understanding.</h2>
+      <div class="guide-step"><span>01</span><div><h3>See what happened</h3><p>Peaks, charge balance, and cycle trends, measured directly from your data.</p></div></div>
+      <div class="guide-step"><span>02</span><div><h3>Put it in context</h3><p>Find literature through SerpApi and compare the experimental conditions.</p></div></div>
+      <div class="guide-step"><span>03</span><div><h3>Choose your next check</h3><p>Explore possible explanations and the measurements that could distinguish them.</p></div></div>
+      <div class="guide-foot"><span class="status-dot"></span> Traceable evidence. Visible assumptions.</div>
+    </section>
     <div id="error-box" class="alert alert-error" role="alert" hidden></div>
 
     <section id="results" hidden>
+      <div class="results-heading"><div><p class="eyebrow">YOUR ANALYSIS</p><h1>What your experiment shows.</h1></div><span class="results-caption">Observe. Compare. Investigate.</span></div>
       <div id="synthetic-banner" class="banner-synthetic" hidden></div>
       <div id="notices"></div>
 
       <div class="grid-main">
         <section class="card plot-card" aria-labelledby="h-plot">
           <div class="card-head">
-            <h2 id="h-plot">Cyclic voltammogram</h2>
+            <h2 id="h-plot" tabindex="-1">Cyclic voltammogram</h2>
             <div class="plot-tools">
               <div id="cycle-buttons" class="segmented" role="group" aria-label="Cycle"></div>
               <label class="toggle"><input type="checkbox" id="opt-all" checked> other cycles</label>
@@ -94,7 +122,7 @@
 
         <aside class="side-col">
           <section class="card next-card" aria-labelledby="h-next">
-            <h2 id="h-next">Next check</h2>
+            <p class="section-kicker">WHERE TO GO FROM HERE</p><h2 id="h-next">Your next check <span aria-hidden="true">↗</span></h2>
             <div id="next-check"></div>
           </section>
           <section class="card" aria-labelledby="h-key">
@@ -140,9 +168,10 @@
         <dl id="glossary"></dl>
       </details>
     </section>
+    <footer class="footer"><span>BenchCheck <span class="footer-divider">/</span> Built for the next question.</span><span>Measurements from your data · Literature via SerpApi</span></footer>
   </main>
 
-  <aside id="drawer" class="drawer" aria-hidden="true" aria-labelledby="h-drawer">
+  <aside id="drawer" class="drawer" aria-hidden="true" aria-labelledby="h-drawer" role="dialog" aria-modal="true" inert>
     <div class="drawer-head">
       <h2 id="h-drawer">Evidence log</h2>
       <button id="close-drawer" class="btn btn-ghost" type="button" aria-label="Close evidence log">✕</button>
@@ -151,7 +180,7 @@
   </aside>
   <div id="scrim" class="scrim" hidden></div>
 
-  <dialog id="confirm-dialog" class="dialog">
+  <dialog id="confirm-dialog" class="dialog" aria-labelledby="dlg-title">
     <form method="dialog">
       <h3 id="dlg-title"></h3>
       <div id="dlg-body"></div>
