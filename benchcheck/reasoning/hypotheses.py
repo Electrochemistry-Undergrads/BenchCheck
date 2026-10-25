@@ -321,7 +321,7 @@ def _randles_sevcik(f: dict) -> dict | None:
     if not (conc.get("value") and area and d and v):
         return None
     unit = (conc.get("unit") or "mM").strip()
-    molar = conc["value"] * (1e-3 if unit == "mM" else 1.0)
+    molar = conc["value"] * {"M": 1., "mol/L": 1., "mM": 1e-3, "mmol/L": 1e-3, "uM": 1e-6, "µM": 1e-6, "μM": 1e-6, "nM": 1e-9}[unit]
     n = meta.get("electrons_n") or 1
     t_k = (meta.get("temperature_c") if meta.get("temperature_c") is not None else 25.0) + 273.15
     expected = 0.4463 * n * FARADAY * area * (molar * 1e-3) * math.sqrt(n * FARADAY * v * d / (GAS_CONSTANT * t_k))

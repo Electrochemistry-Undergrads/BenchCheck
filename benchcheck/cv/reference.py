@@ -72,6 +72,12 @@ def plan_conversion(
     Returns {"possible": bool, "offset_v", "to_label", "explanation", "caveats"}.
     E_converted = E_recorded + offset_v.
     """
+    if temperature_c is not None and (not math.isfinite(temperature_c) or temperature_c <= -273.15):
+        raise ValueError("temperature_c must be finite and above −273.15 °C")
+    if ph is not None and not math.isfinite(ph):
+        raise ValueError("ph must be finite")
+    if from_key and from_key not in REFERENCE_ELECTRODES:
+        raise ValueError(f"Unknown reference electrode {from_key!r}")
     info = reference_info(from_key)
     from_label = reference_label(from_key)
     if target == "custom":
@@ -80,9 +86,9 @@ def plan_conversion(
         return {
             "possible": True,
             "offset_v": float(custom_offset_v),
-            "to_label": custom_description or f"custom scale ({from_label} {custom_offset_v:+.3f} V)",
+            "to_label": f"custom scale ({from_label} {custom_offset_v:+.3f} V)",
             "explanation": f"E_new = E({from_label}) {custom_offset_v:+.3f} V (user-supplied offset).",
-            "caveats": [custom_description or "Offset supplied by the user; BenchCheck cannot verify it."],
+            "caveats": ["Offset supplied by the user; BenchCheck cannot verify it."] + ([custom_description] if custom_description else []),
         }
     if info is None:
         return {"possible": False, "reason": "Select the reference electrode used before converting."}
@@ -102,7 +108,7 @@ def plan_conversion(
         return {
             "possible": True, "offset_v": info["vs_she"], "to_label": "SHE",
             "explanation": f"E(SHE) = E({from_label}) + {info['vs_she']:.3f} V.",
-            "caveats": [TABULATED_NOTE],
+            "caveats": [] if from_key == "she" else [TABULATED_NOTE],
         }
     if target == "RHE":
         if ph is None:

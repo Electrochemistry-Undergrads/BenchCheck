@@ -72,7 +72,7 @@ def metadata_status(meta: ExperimentMetadata, measured_scan_rate: float | None) 
     add(
         "reference_electrode", "Reference electrode",
         reference_label(meta.reference_electrode, meta.reference_detail) if meta.reference_electrode else None,
-        "provided" if meta.reference_electrode else "missing",
+        "provided" if meta.reference_electrode and (meta.reference_electrode != "other" or meta.reference_detail) else "missing",
         "Peak potentials can only be compared with literature on the same reference scale.",
         "required",
     )

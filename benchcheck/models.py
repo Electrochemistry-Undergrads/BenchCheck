@@ -4,23 +4,34 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-class ColumnMapping(BaseModel):
+class RequestModel(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, str_max_length=500)
+
+
+class ColumnMapping(RequestModel):
     potential: str
     current: str
     time: str | None = None
 
+    @model_validator(mode="after")
+    def distinct(self):
+        roles = [self.potential, self.current] + ([self.time] if self.time else [])
+        if len(set(roles)) != len(roles):
+            raise ValueError("mapping potential, current and time must use different columns")
+        return self
 
-class Units(BaseModel):
-    potential: str = "V"
-    current: str = "A"
-    time: str = "s"
+
+class Units(RequestModel):
+    potential: str | None = None
+    current: str | None = None
+    time: str | None = None
 
 
-class Quantity(BaseModel):
-    value: float | None = None
+class Quantity(RequestModel):
+    value: float | None = Field(None, gt=0)
     unit: str | None = None
 
 
@@ -28,7 +39,7 @@ ProcessType = Literal["electrode_material", "dissolved_species", "unknown"]
 Solvent = Literal["aqueous", "non-aqueous", "unknown"]
 
 
-class ExperimentMetadata(BaseModel):
+class ExperimentMetadata(RequestModel):
     electrode_material: str | None = None
     process_type: ProcessType = "unknown"
     analyte: str | None = None
@@ -38,32 +49,55 @@ class ExperimentMetadata(BaseModel):
     reference_detail: str | None = None
     scan_rate: Quantity | None = None  # unit "mV/s" or "V/s"
     analyte_concentration: Quantity | None = None  # unit "mM" or "M" (dissolved species)
-    active_mass_mg: float | None = None  # electrode materials
-    electrode_area_cm2: float | None = None
-    temperature_c: float | None = None
+    active_mass_mg: float | None = Field(None, gt=0)  # electrode materials
+    electrode_area_cm2: float | None = Field(None, gt=0)
+    temperature_c: float | None = Field(None, gt=-273.15)
     ph: float | None = None
     counter_electrode: str | None = None
     ir_compensation: str | None = None
-    diffusion_coefficient_cm2_s: float | None = None
-    electrons_n: int | None = None
+    diffusion_coefficient_cm2_s: float | None = Field(None, gt=0)
+    electrons_n: int | None = Field(None, ge=1)
     notes: str | None = None
 
+    @field_validator("reference_electrode")
+    @classmethod
+    def known_reference(cls, value):
+        from .cv.reference import REFERENCE_ELECTRODES
+        if value and value not in REFERENCE_ELECTRODES:
+            raise ValueError(f"Unknown reference electrode {value!r}")
+        return value
 
-class ReferenceConversion(BaseModel):
+    @field_validator("scan_rate", "analyte_concentration")
+    @classmethod
+    def quantity_unit(cls, value, info):
+        if value and value.value is not None:
+            allowed = {"V/s", "mV/s"} if info.field_name == "scan_rate" else {"M", "mM", "µM", "μM", "uM", "nM", "mol/L", "mmol/L"}
+            if value.unit not in allowed:
+                raise ValueError(f"{info.field_name}.unit must be one of {', '.join(sorted(allowed))}")
+        return value
+
+
+class ReferenceConversion(RequestModel):
     target: Literal["SHE", "RHE", "custom"]
-    offset_v: float | None = None  # only for target == "custom"
+    offset_v: float | None = Field(None, ge=-5, le=5)  # only for target == "custom"
     description: str | None = None
     confirmed: bool = False
 
+    @model_validator(mode="after")
+    def offset_for_custom_only(self):
+        if self.target != "custom" and self.offset_v is not None:
+            raise ValueError("reference_conversion.offset_v is only allowed for a custom conversion")
+        return self
 
-class Processing(BaseModel):
+
+class Processing(RequestModel):
     smoothing_mv: float = Field(10.0, ge=0, le=100)
     baseline: Literal["flat_prewave", "linear_prewave", "zero"] = "flat_prewave"
 
 
-class AnalysisConfig(BaseModel):
+class AnalysisConfig(RequestModel):
     mapping: ColumnMapping
-    units: Units = Units()
+    units: Units | None = Field(default_factory=Units)
     current_convention: Literal["iupac", "cathodic_positive"] = "iupac"
     forward_direction: Literal["auto", "positive", "negative"] = "auto"
     selected_cycle: int | None = None
@@ -75,7 +109,7 @@ class AnalysisConfig(BaseModel):
     example_id: str | None = None
 
 
-class EvidenceContext(BaseModel):
+class EvidenceContext(RequestModel):
     """What the evidence endpoints need to know about the experiment."""
 
     metadata: ExperimentMetadata
@@ -83,7 +117,7 @@ class EvidenceContext(BaseModel):
     measured_scan_rate_v_s: float | None = None
 
 
-class SearchRequest(BaseModel):
+class SearchRequest(RequestModel):
     query_id: str
     query: str
     purpose: str | None = None
@@ -92,26 +126,34 @@ class SearchRequest(BaseModel):
     prefer_cache: bool = False
 
 
-class SelectRequest(BaseModel):
+class SelectRequest(RequestModel):
     sources: list[dict]
     context: EvidenceContext
 
 
-class ExtractRequest(BaseModel):
+class ExtractRequest(RequestModel):
     source: dict
     context: EvidenceContext
     prefer_cache: bool = False
 
 
-class ConversionPreviewRequest(BaseModel):
+class ConversionPreviewRequest(RequestModel):
     from_: str | None = Field(None, alias="from")
     target: Literal["SHE", "RHE", "custom"] = "SHE"
     ph: float | None = None
-    temperature_c: float | None = None
-    offset_v: float | None = None
+    temperature_c: float | None = Field(None, gt=-273.15)
+    offset_v: float | None = Field(None, ge=-5, le=5)
     description: str | None = None
 
+    _known_reference = field_validator("from_")(classmethod(ExperimentMetadata.known_reference.__func__))
 
-class ReportRequest(BaseModel):
+    @model_validator(mode="after")
+    def offset_for_custom_only(self):
+        if self.target != "custom" and self.offset_v is not None:
+            raise ValueError("offset_v is only allowed for a custom conversion")
+        return self
+
+
+class ReportRequest(RequestModel):
     analysis: dict
     evidence: dict = {}

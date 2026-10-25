@@ -107,7 +107,16 @@ def inspect(file: UploadFile = File(...)):
 @app.post("/api/conversion-preview")
 def conversion_preview(req: ConversionPreviewRequest):
     """Describe (without applying) a reference conversion so the user can confirm it."""
-    return plan_conversion(req.from_, req.target, req.ph, req.temperature_c, req.offset_v, req.description)
+    result = plan_conversion(req.from_, req.target, req.ph, req.temperature_c, req.offset_v, req.description)
+    if result.get("possible"):
+        caveats = result.setdefault("caveats", [])
+        if req.temperature_c is None and (req.target == "RHE" or req.from_ == "rhe"):
+            caveats.append("25 °C assumed for the Nernst slope.")
+        if req.temperature_c is not None and abs(req.temperature_c - 25) > 5:
+            caveats.append("Temperature differs from 25 °C; tabulated reference offsets may be inaccurate.")
+        if req.ph is not None and not -2 <= req.ph <= 16:
+            caveats.append("pH is outside the usual range −2 to 16; check the value.")
+    return result
 
 
 @app.post("/api/analyze")
@@ -116,7 +125,7 @@ def analyze_endpoint(file: UploadFile = File(...), config: str = Form(...)):
     try:
         cfg = AnalysisConfig.model_validate_json(config)
     except ValidationError as exc:
-        raise HTTPException(422, f"Invalid analysis settings: {exc.errors()[0].get('msg')}") from exc
+        raise HTTPException(422, [{"loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors()]) from exc
     try:
         table = parse_table(raw, file.filename or "upload")
         result = analyze(table, cfg)

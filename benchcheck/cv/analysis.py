@@ -16,7 +16,7 @@ import numpy as np
 from ..models import AnalysisConfig
 from . import peaks as pk
 from .metadata import metadata_status, scan_rate_v_s
-from .parsing import ParsedTable
+from .parsing import unit_from_header, ParsedTable
 from .reference import plan_conversion, reference_label
 from .segmentation import Segment, assign_cycles, default_cycle, detect_forward_direction, segment_scan
 from .units import (
@@ -65,12 +65,17 @@ def _clean(obj):
 
 def _prepare(table: ParsedTable, config: AnalysisConfig, processing: list[dict], notices: list[str]):
     m = config.mapping
+    def resolve(role, default):
+        supplied = getattr(config.units, role, None) if config.units else None
+        detected = unit_from_header(getattr(m, role)) if getattr(m, role) else None
+        if not supplied and not detected:
+            notices.append(f"{role} units not provided or detected; {default} assumed. Check the units.")
+        return normalize_unit(supplied or detected or default)
     try:
-        e_unit = normalize_unit(config.units.potential)
-        i_unit = normalize_unit(config.units.current)
-        t_unit = normalize_unit(config.units.time) if m.time else None
+        e_unit, i_unit = resolve("potential", "V"), resolve("current", "A")
+        t_unit = resolve("time", "s") if m.time else None
     except ValueError as exc:
-        raise AnalysisError(str(exc)) from exc
+        raise AnalysisError("units: select valid potential, current and time units.") from exc
     E_col = table.column(m.potential)
     i_col = table.column(m.current)
     t_col = table.column(m.time) if m.time else None
@@ -100,6 +105,8 @@ def _prepare(table: ParsedTable, config: AnalysisConfig, processing: list[dict],
         parts.append(conversion("time", t_unit, "s"))
     detail = "; ".join(parts)
     processing.append({"step": "Unit conversion", "detail": detail[:1].upper() + detail[1:] + "."})
+    if dropped / mask.size > .05:
+        notices.append(f"{dropped} of {mask.size} rows ({100*dropped/mask.size:.1f}%) were excluded because mapped values were not numeric.")
     if dropped:
         processing.append({"step": "Rows excluded", "detail": f"{dropped} row(s) without numeric values in the mapped columns."})
     if t is not None and np.any(np.diff(t) < 0):
@@ -460,6 +467,13 @@ def analyze(table: ParsedTable, config: AnalysisConfig) -> dict:
     processing: list[dict] = []
     notices: list[str] = []
     meta = config.metadata
+    if meta.process_type == "unknown":
+        notices.append("Process type not set; loss/EC diagnoses need it.")
+    for field, low, high in (("temperature_c", -40, 150), ("ph", -2, 16),
+                             ("electrons_n", 1, 10), ("diffusion_coefficient_cm2_s", 1e-9, 1e-3)):
+        value = getattr(meta, field)
+        if value is not None and not low <= value <= high:
+            notices.append(f"metadata.{field} = {value:g} is unusual; check the entered value and units.")
     E, i, t, density, scale, dropped = _prepare(table, config, processing, notices)
 
     try:
