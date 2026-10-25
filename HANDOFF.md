@@ -1,6 +1,12 @@
 # BenchCheck handoff
 
-Status as of 2026-10-25. This file is for whoever picks up the project next: a teammate, or a new Claude Code session.
+Status as of 2026-10-25.
+
+Frontend update: the workspace now starts with file upload; the example picker and its automatic metadata filling have been removed. Synthetic fixtures remain under `examples/` for validation. When uploading them, check **My file contains simulated data** and enter their metadata explicitly. The frontend has keyboard-accessible upload, labeled unit selectors, and a focus-managed evidence drawer. See `docs/HACKTX.md` for verified official requirements and outstanding submission checks. AI assistance includes Claude Code and OpenAI Codex.
+
+The implementation-status table below records the original handoff. Locally generated, uncommitted cache responses are not part of this frontend change and still need evidence review before publication.
+
+ This file is for whoever picks up the project next: a teammate, or a new Claude Code session.
 
 ## One-paragraph summary
 
@@ -33,11 +39,11 @@ python scripts/evaluate.py    # 16/16 checks -> docs/evaluation_results.md
 1. **Get live SerpApi working.** The build sandbox blocked `serpapi.com` and had no key.
    - Locally: put `SERPAPI_API_KEY` in `.env`.
    - In a Claude Code cloud session: allow `serpapi.com` under Network access and add `SERPAPI_API_KEY` as a network secret, then start a new session.
-2. **Smoke-test live:** load the weak-return example, click **Find literature evidence**, and check the evidence log drawer for errors. The Extract API launched on 2026-10-13, and its response parser (`benchcheck/evidence/sources.py::parse_extract`) was written against documented field names (`page_information`, `meta_tags`, `text_content.full/markdown`). If real responses differ, adjust it there.
+2. **Smoke-test live:** upload the weak-return CSV, mark it simulated, confirm its mapping and metadata, click **Find literature evidence**, and check the evidence log drawer for errors. The Extract API launched on 2026-10-13, and its response parser (`benchcheck/evidence/sources.py::parse_extract`) was written against documented field names (`page_information`, `meta_tags`, `text_content.full/markdown`). If real responses differ, adjust it there.
 3. **Record the demo fallback:** `python scripts/refresh_demo_cache.py`. It uses about 16 credits and writes `data/cache/demo/` plus `docs/demo_reports/`. Review the reports, then commit both folders.
 4. **Audit the evidence:** `python scripts/evaluate.py`. Section D lists every cited passage; a human fills in "Supports the statement?". Report the real counts in docs/EVALUATION.md and docs/DEVPOST.md.
 5. **Personalize** the `[Personalize: …]` placeholders in docs/DEMO_SCRIPT.md, docs/PRESENTATION.md and docs/DEVPOST.md with true stories only.
-6. **Check the official HackTX 2026 rules** (hacking period, AI-assistance disclosure). They could not be found online during the build.
+6. **Complete the remaining submission checks in `docs/HACKTX.md`**, including public code/video and accurate AI disclosure. Official rules were verified during the frontend update.
 7. **Rehearse** with `BENCHCHECK_EVIDENCE_MODE=cache python -m benchcheck` as the fallback.
 
 ## Code map

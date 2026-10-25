@@ -4,7 +4,7 @@ Five beats. Keep the demo itself to about 80 seconds (use the [demo script](DEMO
 
 ## 1. The problem (0:00–0:25)
 
-**Slide:** a real-looking CV with a weak return peak and three question marks: *material? reference? scan rate?*
+**Slide:** an explicitly labeled synthetic CV with a weak return peak and three question marks: *material? reference? scan rate?*
 
 > "Cyclic voltammetry is the first experiment almost every electrochemistry student runs, and the first one that confuses them. A weak return peak can mean the material is degrading, a side reaction at the vertex, a bad reference electrode, or just the wrong scan rate. The literature has answers, but under conditions that rarely match yours: different electrolyte, different reference, a scan rate a hundred times slower. Students lose a lot of time on this. I have hands-on research experience with lithium manganese oxide electrodes for lithium extraction, and I've run into confusing results myself." *[Personalize: one true example from your own work.]*
 
@@ -16,7 +16,7 @@ Five beats. Keep the demo itself to about 80 seconds (use the [demo script](DEMO
 
 ## 3. Live demo (0:40–2:00)
 
-Weak-return-peak synthetic example → analyze → key numbers → **Find literature evidence** → evidence table → next check → evidence log. (See the demo script for exact lines.)
+Upload the weak-return synthetic CSV, mark it simulated, confirm its columns, units, and metadata → analyze → key numbers → **Find literature evidence** → evidence table → next check → evidence log. (See the demo script for exact lines.)
 
 ## 4. Why SerpApi is essential (2:00–2:25)
 

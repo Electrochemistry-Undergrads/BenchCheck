@@ -5,19 +5,23 @@
 | Time | On screen | Say |
 |---|---|---|
 | 0:00 | Landing page | "I work with lithium manganese oxide electrodes and cyclic voltammetry, and I've hit results I couldn't interpret. *[Personalize: one true sentence about a confusing result you had.]* With a weak return peak, is the material degrading, is the reference off, or did I push the potential too far? BenchCheck answers three questions: what did I measure, what could explain it, and what should I check next?" |
-| 0:12 | Click **Synthetic CV · weak return peak** | "This is a labeled synthetic CV, LMO-like in aqueous lithium chloride. BenchCheck suggests the columns and units, and I confirm them. It also flags missing metadata, like pH and electrode area, and says why each one matters." |
-| 0:25 | Click **Confirm & analyze** | "Everything here is measured, not guessed. Blue is the forward sweep, orange is the return, and the arrows show scan direction. The return peaks are only 0.61 of the forward peaks. Only 46% of the charge comes back. The current is still rising at the vertex, and the peaks drop 67% over three cycles." |
+| 0:12 | Upload `examples/synthetic_lmo_weak_return.csv`; check **My file contains simulated data** | "This is a labeled synthetic CV, LMO-like in aqueous lithium chloride. BenchCheck suggests the columns and units, and I confirm them. It also flags missing metadata, like pH and electrode area, and says why each one matters." |
+| 0:25 | Click **Confirm & analyze** | "Everything here is measured, not guessed. Green is the forward sweep, brown is the return, and the arrows show scan direction. The return peaks are only 0.61 of the forward peaks. Only 46% of the charge comes back. The current is still rising at the vertex, and the peaks drop 67% over three cycles." |
 | 0:42 | Click **Find literature evidence** | "Now SerpApi. BenchCheck builds Google Scholar queries from my conditions and the flagged features, like LMO plus aqueous LiCl plus oxygen evolution. Then it uses SerpApi's Extract API to pull abstracts or full text." |
 | 0:55 | Scroll to the evidence table | "Each row quotes a verbatim passage and labels it full text, abstract, or snippet. Then it compares conditions with mine: material, electrolyte, aqueous vs organic, reference electrode, scan-rate regime." *Point at a row with a ✗ chip if there is one:* "This paper's conditions differ from mine, and BenchCheck says how that limits what I can conclude." |
 | 1:08 | Point at **Next check** | "The recommendation: pull the vertex back 50 to 100 millivolts. It distinguishes all three hypotheses in one 30-minute cycle, and the reasons are listed." *If a reason mentions condition-matched literature, read it out.* |
 | 1:18 | Click **Evidence log** (drawer) | "Every SerpApi call is logged with its query, timestamp, search ID, and whether it was live or cached." |
 | 1:24 | Close the drawer | "Because the data are synthetic, we know the truth: the generator added a side reaction and material loss above 1.15 V. BenchCheck wasn't told that. BenchCheck turns a confusing experiment into measured observations, traceable evidence, and a clearer next step." |
 
+## Prepare an uploaded validation file
+
+There are no example buttons in the app. For this scripted synthetic demonstration, upload the CSV through **browse files**, explicitly mark it as simulated, and enter the mapping, units, and experiment metadata from its adjacent `.meta.json` file before recording. These conditions are not auto-filled. Use your own instrument export for a real-data demonstration, and report only results you actually observe.
+
 ## If something fails
 
 - **Live SerpApi is slow or down:** say "SerpApi is unreachable, so BenchCheck says so." The numbers, hypotheses and next check still appear, and the evidence panel shows *unavailable* with the reason. That is the graceful-failure feature, so show it.
 - **Pre-recorded fallback:** restart with `BENCHCHECK_EVIDENCE_MODE=cache python -m benchcheck`. Evidence is then served from `data/cache/demo/`: real responses recorded earlier with `scripts/refresh_demo_cache.py`, each labeled *cached* with its retrieval time. Say "this is cached evidence, retrieved at [time]".
-- **Run `refresh_demo_cache.py` before the event.** Without it, the cache-only fallback has nothing to show.
+- **Run `refresh_demo_cache.py` before judging.** Without it, the cache-only fallback has nothing to show.
 
 ## Backup lines for judges' questions
 
