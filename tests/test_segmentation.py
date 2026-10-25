@@ -49,9 +49,10 @@ def test_start_mid_window_gives_partial_first_cycle():
     segs, _ = segment_scan(E)
     assert segs[0].partial and segs[0].direction == 1
     fwd = detect_forward_direction(segs)
-    assert fwd == -1  # first full-range sweep is negative-going
+    assert fwd == 1  # first partial sweep records the actual initial scan direction
     cycles, leading = assign_cycles(segs, fwd)
-    assert leading == [0]
+    assert leading == []
+    assert cycles[0].complete is False
     assert default_cycle(cycles) == 2
 
 

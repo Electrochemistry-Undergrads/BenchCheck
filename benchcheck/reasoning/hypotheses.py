@@ -342,6 +342,8 @@ def evaluate(analysis: dict) -> list[dict]:
 
     def emit(rule_id, triggered, observations, reason=None, extra=None):
         r = RULES[rule_id]
+        if ptype == "unknown" and rule_id in ("irreversible_loss", "ec_chemical_step"):
+            return
         if ptype not in r.applies_to:
             return
         d = {
@@ -358,13 +360,16 @@ def evaluate(analysis: dict) -> list[dict]:
     rv = f["return"].get("vertex") or {}
     main = f["main_pair"]
 
+    # A rising unresolved wave alone cannot identify a separate side reaction.
+    if not f["forward"].get("peaks"):
+        fv = {**fv, "rising": False}
     # Side reaction at the forward vertex
     obs = []
     if fv.get("rising"):
         obs.append(f"Forward-sweep current still rising at the vertex ({fmt_potential(fv['potential'])}): "
                    f"+{_cur(f, fv['rise'])} above the post-peak minimum ({fv['rise_fraction'] * 100:.0f}% of the "
-                   "largest forward peak).")
-        if f["charge_ratio"] is not None and f["charge_ratio"] < th["charge_recovered"]:
+                   + ("largest forward peak)." if f["forward"].get("peaks") else "sweep current range; no resolved forward peak)."))
+        if ptype == "electrode_material" and f["charge_ratio"] is not None and f["charge_ratio"] < th["charge_recovered"]:
             obs.append(f"Return/forward charge ratio {f['charge_ratio']:.2f}.")
     gaps = []
     if f["solvent"] == "aqueous" and fv.get("rising") and f["metadata"].get("ph") is None:
@@ -406,7 +411,7 @@ def evaluate(analysis: dict) -> list[dict]:
     if f["unpaired_forward"]:
         trig = True
         obs.append("No return peak detected for forward peak(s) " + ", ".join(f["unpaired_forward"]) + ".")
-    emit("ec_chemical_step", trig, obs, "Return/forward ratio close to 1.")
+    emit("ec_chemical_step", trig, obs, "Return/forward ratio is not below the threshold." if ratio is not None else "No return/forward peak ratio available.")
 
     # Progressive degradation / fouling
     tr = f["trends"] or {}
@@ -420,10 +425,11 @@ def evaluate(analysis: dict) -> list[dict]:
     emit("electrode_fouling", trig, obs, reason)
 
     # Kinetics / resistance
-    limit = th["delta_ep_dissolved_v"] if ptype == "dissolved_species" else th["delta_ep_material_v"]
+    n = f["metadata"].get("electrons_n") or 1
+    limit = th["delta_ep_dissolved_v"] / n if ptype == "dissolved_species" else th["delta_ep_material_v"]
     seps = [p for p in f["pairs"] if p.get("delta_ep") is not None]
     big = [p for p in seps if p["delta_ep"] > limit]
-    obs = [f"ΔEp = {fmt_mv(p['delta_ep'])} for {p['anodic']}/{p['cathodic']} (> {limit * 1e3:.0f} mV)." for p in big]
+    obs = [f"ΔEp = {fmt_mv(p['delta_ep'])} for {p['anodic']}/{p['cathodic']} (> {limit * 1e3:.0f} mV; n = {n})." for p in big]
     emit("kinetic_limitation", bool(big), obs,
          f"All peak separations ≤ {limit * 1e3:.0f} mV." if seps else "No forward/return peak pair to measure.")
 
@@ -433,7 +439,7 @@ def evaluate(analysis: dict) -> list[dict]:
             and f["charge_ratio"] >= th["charge_recovered"]:
         trig = True
         obs.append(f"Peak-height ratio {f['min_ratio']:.2f} but charge ratio {f['charge_ratio']:.2f}: the charge "
-                   "comes back in a lower, broader peak.")
+                   "is recovered despite a lower return peak.")
     wide = [p for p in f["pairs"] if p.get("width_ratio") and p["width_ratio"] > th["width_ratio_high"]]
     for p in wide:
         trig = True
@@ -447,15 +453,15 @@ def evaluate(analysis: dict) -> list[dict]:
         obs.append(f"No return peak for {f['main_forward_peak']} and the return-sweep current is still increasing at "
                    f"the return vertex ({fmt_potential(rv['potential'])}).")
     for p in f["return"].get("peaks", []):
-        if p.get("near_vertex"):
+        if p.get("near_vertex") and rv.get("rising"):
             trig = True
-            obs.append(f"Return peak {p['label']} lies within one peak width of a vertex.")
+            obs.append(f"Return peak {p['label']} is unresolved at the return vertex and current is still rising.")
     emit("truncated_return", trig, obs, "Return peaks are well inside the potential window.")
 
     # Reference
     meta = f["metadata"]
     obs, trig = [], False
-    if not meta.get("reference_electrode"):
+    if not meta.get("reference_electrode") or (meta.get("reference_electrode") == "other" and not meta.get("reference_detail")):
         trig = True
         obs.append("Reference electrode not specified.")
     elif meta.get("reference_electrode") == "pseudo":
@@ -467,11 +473,11 @@ def evaluate(analysis: dict) -> list[dict]:
     emit("reference_uncertainty", trig, obs, "Reference electrode specified and midpoint potentials stable.")
 
     # Randles–Ševčík check (dissolved species)
-    rs = _randles_sevcik(f) if ptype == "dissolved_species" else None
+    rs = _randles_sevcik(f) if ptype == "dissolved_species" and "scan_rate_mismatch" not in f["quality_codes"] else None
     if ptype == "dissolved_species":
         if rs is None:
             emit("concentration_or_area", False, [],
-                 "Not evaluated: needs analyte concentration, electrode area, diffusion coefficient and scan rate.")
+                 "Not evaluated: resolve the scan-rate mismatch first." if "scan_rate_mismatch" in f["quality_codes"] else "Not evaluated: needs analyte concentration, electrode area, diffusion coefficient and scan rate.")
         else:
             trig = not (th["rs_low"] <= rs["ratio"] <= th["rs_high"])
             obs = [f"Measured forward peak {fmt_current(rs['measured_a'], *display_current_unit(rs['measured_a'], False), signed=False)} "

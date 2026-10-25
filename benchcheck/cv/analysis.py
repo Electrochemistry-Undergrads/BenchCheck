@@ -184,7 +184,7 @@ def _analyze_sweep(seg, role, E, i, i_s, t, scan_rate, threshold, baseline_metho
     found = pk.build_peaks(Es, Is, Ss, seg.direction, candidates, baseline, role, seg.index, a, tolerance)
     heights = [p.height for p in found if p.height > 0]
     ref_height = max(heights) if heights else float(np.ptp(Ss))
-    vertex = pk.vertex_behavior(Es, Ss, seg.direction, [p.index - a for p in found], ref_height, VERTEX_RISE_FRACTION)
+    vertex = pk.vertex_behavior(Es, Ss, seg.direction, [p.index - a for p in found], ref_height, VERTEX_RISE_FRACTION, noise)
     t_seg = t[a:b] if t is not None else None
     charge, basis = pk.sweep_charge(Is, t_seg, Es, scan_rate)
     info = _sweep_info(seg)
@@ -213,6 +213,11 @@ def _cycle_features(cycle, segments, E, i, i_s, t, scan_rate, noise, process_typ
         _analyze_sweep(seg_r, "return", E, i, i_s, t, scan_rate, threshold, baseline_method, noise, hint)
         if seg_r else None
     )
+    if fwd and ret and baseline_method != "zero" and fwd["baseline"]["method"] != ret["baseline"]["method"]:
+        fwd = _analyze_sweep(seg_f, "forward", E, i, i_s, t, scan_rate, threshold, "zero", noise)
+        ret = _analyze_sweep(seg_r, "return", E, i, i_s, t, scan_rate, threshold, "zero", noise)
+        for sweep in (fwd, ret):
+            sweep["baseline"]["note"] = "Pre-wave baseline unavailable on one sweep; zero baseline used on both for a consistent comparison."
     _label_peaks([s for s in (fwd, ret) if s])
 
     # Without a return sweep there is nothing to pair with: forward peaks are not "unpaired".
@@ -304,7 +309,7 @@ def _trends(cycle_feats: list[dict], selected: dict | None) -> dict | None:
         "first_cycle": first["number"],
         "last_cycle": last["number"],
         "height_change_pct": change,
-        "per_cycle_pct": change / (last["number"] - first["number"]) if last["number"] != first["number"] else None,
+        "per_cycle_pct": ((last["height"] / first["height"]) ** (1 / (last["number"] - first["number"])) - 1) * 100 if last["number"] != first["number"] else None,
         "potential_shift": last["potential"] - first["potential"],
         "e_mid_shift": (mids[-1] - mids[0]) if len(mids) >= 2 else None,
     }
@@ -332,6 +337,16 @@ def _quality(E, i, i_s, t, segments, cycles, cycle_feats, selected, noise, meta_
     def add(code, severity, message):
         flags.append({"code": code, "severity": severity, "message": message})
 
+    if np.max(np.abs(E)) > 10 or np.max(np.abs(i)) > (10 if density else 1):
+        add("unit_magnitude", "high", "Check the units: values look like mV/µA; potential or current magnitudes are unusually large.")
+    mad = float(np.median(np.abs(i - np.median(i))))
+    if mad > 0 and np.max(np.abs(i - np.median(i))) > 1000 * mad:
+        add("current_outlier", "warning", "Current contains a robust outlier (>1000 × MAD); inspect the raw data before interpreting peaks.")
+    if t is not None:
+        dt = np.diff(t)
+        positive = dt[dt > 0]
+        if positive.size and np.any(dt > 10 * np.median(positive)):
+            add("time_gap", "high", "The time column contains gaps greater than 10 × the median interval; charge integration spans these gaps.")
     clip = _clipping(i)
     if clip:
         unit, sc = display_current_unit(abs(clip["value"]), density)
@@ -344,7 +359,7 @@ def _quality(E, i, i_s, t, segments, cycles, cycle_feats, selected, noise, meta_
         if rel > SCAN_RATE_TOLERANCE:
             add("scan_rate_mismatch", "high",
                 f"The time column gives {fmt_scan_rate(measured_rate)}, but {fmt_scan_rate(meta_rate)} was entered "
-                f"({rel * 100:.0f}% difference). Check the instrument setting and the metadata.")
+                f"({max(measured_rate, meta_rate)/min(measured_rate, meta_rate):.1f}× {'higher' if measured_rate > meta_rate else 'lower'} than entered). Check the instrument setting and the metadata.")
     r2 = [s.scan_rate_r2 for s in segments if s.scan_rate_r2 is not None and not s.trivial]
     if r2 and min(r2) < 0.995:
         add("scan_rate_nonlinear", "warning",
@@ -449,7 +464,7 @@ def _observations(selected, trends, density, scale, scan_rate_entered, measured_
             obs.append({"id": f"{key}_vertex_rising", "text": (
                 f"At the end of the {name} sweep ({fmt_potential(v['potential'])}) the current magnitude is still "
                 f"increasing: it rises {cur(v['rise'])} over the post-peak minimum "
-                f"({v['rise_fraction'] * 100:.0f}% of the largest peak height on that sweep).")})
+                + (f"({v['rise_fraction'] * 100:.0f}% of the largest peak height on that sweep)." if s["peaks"] else "(no resolved peak on this sweep)."))})
     if trends and trends.get("height_change_pct") is not None:
         obs.append({"id": "trend", "text": (
             f"Across complete cycles {trends['first_cycle']}–{trends['last_cycle']}, the forward peak near "
@@ -485,7 +500,7 @@ def analyze(table: ParsedTable, config: AnalysisConfig) -> dict:
     elif config.forward_direction == "negative":
         forward_dir, fwd_basis = -1, "user-selected"
     else:
-        forward_dir, fwd_basis = detect_forward_direction(segments), "auto-detected from the first full-range sweep"
+        forward_dir, fwd_basis = detect_forward_direction(segments), "auto-detected from the first nontrivial sweep, including a partial initial sweep"
     cycles, leading = assign_cycles(segments, forward_dir)
     if not cycles:
         raise AnalysisError("No sweep in the forward direction was found; check the potential column.")
@@ -533,10 +548,19 @@ def analyze(table: ParsedTable, config: AnalysisConfig) -> dict:
     measured_rate = float(np.median(measured)) if measured else None
     rate_for_charge = measured_rate or scan_rate
 
+    detection_noise = noise * pk.smoothing_noise_gain(main_w)
     cycle_feats = [
-        _cycle_features(c, segments, E, i, i_s, t, rate_for_charge, noise, meta.process_type, baseline_method)
+        _cycle_features(c, segments, E, i, i_s, t, rate_for_charge, detection_noise, meta.process_type, baseline_method)
         for c in cycles
     ]
+    for c in cycle_feats:
+        for role in ("forward", "return"):
+            sweep = c.get(role)
+            if sweep and sweep["baseline"]["method"] == "zero" and baseline_method != "zero":
+                note = sweep["baseline"]["note"]
+                message = f"Cycle {c['number']} {role}: {note}"
+                if message not in notices:
+                    notices.append(message)
     processing.append({
         "step": "Peak detection",
         "detail": f"Local extrema with prominence ≥ max({pk.PROMINENCE_NOISE_MULTIPLE:g}× noise σ, "

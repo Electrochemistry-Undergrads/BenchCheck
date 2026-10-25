@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 from scipy.integrate import trapezoid
-from scipy.signal import find_peaks, savgol_filter
+from scipy.signal import find_peaks, savgol_filter, savgol_coeffs
 
 PROMINENCE_NOISE_MULTIPLE = 6.0
 PROMINENCE_SPAN_FRACTION = 0.03
@@ -96,10 +96,17 @@ def smooth(i: np.ndarray, window: int) -> np.ndarray:
     return savgol_filter(i, window, SAVGOL_POLYORDER, mode="interp")
 
 
+def smoothing_noise_gain(window: int) -> float:
+    return float(np.sqrt(np.sum(savgol_coeffs(window, SAVGOL_POLYORDER) ** 2))) if window >= 5 else 1.0
+
+
 def robust_noise(i: np.ndarray, i_smooth: np.ndarray) -> float:
-    resid = i - i_smooth
-    mad = float(np.median(np.abs(resid - np.median(resid))))
-    return 1.4826 * mad
+    # Second differences remove locally linear Faradaic/background trends.
+    diff = np.diff(i, n=2)
+    if diff.size == 0:
+        return 0.0
+    mad = float(np.median(np.abs(diff - np.median(diff))))
+    return 1.4826 * mad / np.sqrt(6.0)
 
 
 BASELINE_WINDOW_V = 0.050
@@ -230,6 +237,7 @@ def detect_sweep_peaks(
     i_s: np.ndarray,
     direction: int,
     threshold: float,
+    settling_v: float = .010,
 ) -> list[dict]:
     """Candidate peaks on one sweep (local indices), strongest first."""
     n = E.size
@@ -246,6 +254,11 @@ def detect_sweep_peaks(
             continue
         e_left = float(np.interp(props["left_ips"][k], grid, E))
         e_right = float(np.interp(props["right_ips"][k], grid, E))
+        if abs(e_right - e_left) < MIN_PEAK_WIDTH_V - 1e-9:
+            continue
+        # Boundary extrema from reversal settling and filter edges are not resolved waves.
+        if min(abs(E[p] - E[0]), abs(E[-1] - E[p])) < settling_v:
+            continue
         found.append(
             {
                 "local_index": int(p),
@@ -277,7 +290,7 @@ def build_peaks(
         e_p = float(E[p])
         base = baseline.at(e_p)
         width, _resolved = fwhm_above_baseline(E, y_corr, p, tolerance)
-        margin = max(width or 0.0, 0.02)
+        margin = max((width or 0.0) / 2, 0.01)
         peaks.append(
             Peak(
                 label="",
@@ -292,7 +305,7 @@ def build_peaks(
                 height=float(direction * (i_s[p] - base)),
                 prominence=c["prominence"],
                 width_v=width,
-                near_vertex=(e_p - e_lo) < margin or (e_hi - e_p) < margin,
+                near_vertex=abs(E[-1] - e_p) < margin and y_corr[-1] > .5 * y_corr[p],
             )
         )
     return peaks
@@ -305,6 +318,7 @@ def vertex_behavior(
     peak_local_indices: list[int],
     reference_height: float,
     rise_fraction_threshold: float,
+    noise: float = 0.,
 ) -> dict | None:
     """How the current behaves over the last 30 mV before the sweep's end vertex.
 
@@ -322,7 +336,7 @@ def vertex_behavior(
     y_min = float(np.min(y[start:]))
     rise = float(y[-1] - y_min)
     frac = rise / reference_height if reference_height > 0 else None
-    rising = bool(slope > 0 and frac is not None and frac > rise_fraction_threshold)
+    rising = bool(y[-1] > 3 * noise and slope * VERTEX_WINDOW_V > 3 * noise and frac is not None and frac > rise_fraction_threshold)
     return {
         "potential": float(E[-1]),
         "current": float(i_s[-1]),

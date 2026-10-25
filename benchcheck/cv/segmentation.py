@@ -168,9 +168,6 @@ def segment_scan(E: np.ndarray, t: np.ndarray | None = None) -> tuple[list[Segme
 
 def detect_forward_direction(segments: list[Segment]) -> int:
     for seg in segments:
-        if not seg.trivial and not seg.partial:
-            return seg.direction
-    for seg in segments:
         if not seg.trivial:
             return seg.direction
     return segments[0].direction
