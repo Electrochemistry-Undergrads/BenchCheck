@@ -93,7 +93,6 @@ fieldset.field { border: 0; margin: 0; padding: 0; }
   border: 1px solid var(--color-rule-2); border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); font-size: var(--text-md);
   transition: border-color var(--dur-micro) var(--ease-out);
 }
-.field input::placeholder { color: var(--color-muted); }
 .field input:hover, .field select:hover { border-color: var(--color-muted); }
 .field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; border-color: transparent; transition: none; }
 .field input:disabled, .field select:disabled { background: var(--color-paper-2); color: var(--color-muted); border-color: var(--color-rule); cursor: not-allowed; }
@@ -204,6 +203,12 @@ fieldset.field { border: 0; margin: 0; padding: 0; }
 
 .map-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: var(--space-sm); margin-block-end: var(--space-md); }
 .map-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.meta-sections { display: grid; gap: var(--space-lg); margin-block-start: var(--space-lg); }
+.meta-section { min-width: 0; }
+.meta-section + .meta-section { border-block-start: 1px solid var(--color-rule); padding-block-start: var(--space-lg); }
+.meta-section-heading { display: grid; gap: var(--space-2xs); }
+.meta-section-heading h3, .meta-section-heading p { margin: 0; }
+.meta-section-heading h3 { font-size: var(--text-md); }
 .meta-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-md); margin-block-start: var(--space-md); }
 .meta-grid .span2 { grid-column: span 2; }
 .analyze-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); margin-block-start: var(--space-lg); padding-block-start: var(--space-lg); border-block-start: 1px solid var(--color-rule); }

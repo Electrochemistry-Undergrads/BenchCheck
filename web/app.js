@@ -68,25 +68,25 @@ const GLOSSARY = [
 ];
 
 const META_FIELDS = [
-  { key: "electrode_material", label: "Working electrode material", type: "text", placeholder: "e.g., LiMn2O4 composite", required: true, span: 2 },
+  { key: "electrode_material", label: "Working electrode material", type: "text", required: true, span: 2 },
   { key: "process_type", label: "Redox-active species is…", type: "radio", required: true, span: 2,
     options: [["electrode_material", "in the electrode (film / insertion)"], ["dissolved_species", "dissolved in the electrolyte"]] },
-  { key: "analyte", label: "Analyte", type: "text", placeholder: "e.g., ferricyanide", required: true, showIf: (m) => m.process_type === "dissolved_species" },
-  { key: "electrolyte", label: "Electrolyte (salt + concentration)", type: "text", placeholder: "e.g., 1 M LiCl", required: true },
+  { key: "analyte", label: "Analyte", type: "text", required: true, showIf: (m) => m.process_type === "dissolved_species" },
+  { key: "electrolyte", label: "Electrolyte (salt + concentration)", type: "text", required: true },
   { key: "solvent", label: "Solvent", type: "select", required: true,
     options: [["unknown", "— select —"], ["aqueous", "aqueous"], ["non-aqueous", "non-aqueous"]] },
   { key: "reference_electrode", label: "Reference electrode", type: "reference", required: true },
-  { key: "reference_detail", label: "Reference details", type: "text", placeholder: "describe the reference", showIf: (m) => m.reference_electrode === "other" },
+  { key: "reference_detail", label: "Reference details", type: "text", showIf: (m) => m.reference_electrode === "other" },
   { key: "scan_rate", label: "Scan rate", type: "quantity", units: ["mV/s", "V/s"], required: true },
   { key: "active_mass_mg", label: "Active-material mass (mg)", type: "number", showIf: (m) => m.process_type !== "dissolved_species" },
   { key: "analyte_concentration", label: "Analyte concentration", type: "quantity", units: ["mM", "M", "µM", "nM"], showIf: (m) => m.process_type === "dissolved_species" },
-  { key: "diffusion_coefficient_cm2_s", label: "Diffusion coefficient (cm²/s)", type: "number", placeholder: "optional", showIf: (m) => m.process_type === "dissolved_species" },
-  { key: "electrons_n", label: "Electrons transferred, n", type: "number", placeholder: "1 if blank", showIf: (m) => m.process_type === "dissolved_species" },
+  { key: "diffusion_coefficient_cm2_s", label: "Diffusion coefficient (cm²/s)", type: "number", showIf: (m) => m.process_type === "dissolved_species" },
+  { key: "electrons_n", label: "Electrons transferred, n", type: "number", showIf: (m) => m.process_type === "dissolved_species" },
   { key: "electrode_area_cm2", label: "Electrode area (cm²)", type: "number" },
-  { key: "temperature_c", label: "Temperature (°C)", type: "number", placeholder: "25 °C if blank" },
+  { key: "temperature_c", label: "Temperature (°C)", type: "number" },
   { key: "ph", label: "pH", type: "number", showIf: (m) => m.solvent !== "non-aqueous" },
-  { key: "counter_electrode", label: "Counter electrode", type: "text", placeholder: "e.g., Pt wire" },
-  { key: "ir_compensation", label: "iR compensation", type: "text", placeholder: "e.g., none, 85 %" },
+  { key: "counter_electrode", label: "Counter electrode", type: "text" },
+  { key: "ir_compensation", label: "iR compensation", type: "text" },
 ];
 
 const blankMetadata = () => ({ process_type: "unknown", solvent: "unknown", scan_rate: { value: null, unit: "mV/s" } });
@@ -372,17 +372,22 @@ function metaValueMissing(f, m) {
   return v === null || v === undefined || v === "";
 }
 
+function metaFieldRequired(field, metadata) {
+  return Boolean(field.required || (field.key === "reference_detail" && metadata.reference_electrode === "other"));
+}
+
 function renderMetaForm() {
   const focusSelector = activeControl();
   const m = state.metadata;
   const refs = state.status.reference_electrodes;
-  const html = META_FIELDS.filter((f) => !f.showIf || f.showIf(m)).map((f) => {
-    const missing = f.required && metaValueMissing(f, m) ? `<span class="tag-missing">missing</span>` : "";
+  const fields = META_FIELDS.filter((f) => !f.showIf || f.showIf(m));
+  const renderField = (f) => {
+    const missing = metaFieldRequired(f, m) && metaValueMissing(f, m) ? `<span class="tag-missing">missing</span>` : "";
     const cls = f.span ? `field span${f.span}` : "field";
     let control = "";
     if (f.type === "text" || f.type === "number") {
       const val = m[f.key] ?? "";
-      control = `<input data-meta="${f.key}" type="${f.type === "number" ? "number" : "text"}" ${f.type === "number" ? numericAttrs(f.key) : 'maxlength="500"'} value="${esc(val)}" placeholder="${esc(f.placeholder || "")}">`;
+      control = `<input data-meta="${f.key}" type="${f.type === "number" ? "number" : "text"}" ${f.type === "number" ? numericAttrs(f.key) : 'maxlength="500"'} value="${esc(val)}">`;
     } else if (f.type === "select") {
       control = `<select data-meta="${f.key}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${m[f.key] === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
     } else if (f.type === "reference") {
@@ -397,8 +402,14 @@ function renderMetaForm() {
     }
     if (f.type === "radio") return `<fieldset class="${cls}"><legend><span>${esc(f.label)} ${missing}</span></legend>${control}</fieldset>`;
     return `<label class="${cls}"><span>${esc(f.label)} ${missing}</span>${control}</label>`;
-  }).join("");
-  $("#meta-form").innerHTML = html;
+  };
+  $("#meta-form").innerHTML = [
+    { id: "required", title: "Required", description: "Key details for comparing literature conditions.", required: true },
+    { id: "optional", title: "Optional", description: "Additional details to refine the analysis.", required: false },
+  ].map((group) => `<section class="meta-section" aria-labelledby="meta-${group.id}-title">
+    <div class="meta-section-heading"><h3 id="meta-${group.id}-title">${group.title}</h3><p class="muted small">${group.description}</p></div>
+    <div class="meta-grid">${fields.filter((field) => metaFieldRequired(field, m) === group.required).map(renderField).join("")}</div>
+  </section>`).join("");
   const rerenderKeys = new Set(["process_type", "solvent", "reference_electrode"]);
   $$("[data-meta]").forEach((el) => {
     const handler = () => {
@@ -430,7 +441,7 @@ function renderMetaForm() {
 }
 
 function refreshMissingTags() {
-  const missing = META_FIELDS.filter((f) => f.required && (!f.showIf || f.showIf(state.metadata)) && metaValueMissing(f, state.metadata));
+  const missing = META_FIELDS.filter((f) => metaFieldRequired(f, state.metadata) && (!f.showIf || f.showIf(state.metadata)) && metaValueMissing(f, state.metadata));
   $("#analyze-msg").innerHTML = missing.length
     ? `Missing: ${missing.map((f) => esc(f.label)).join(", ")}. You can still analyze; literature comparison will be weaker.`
     : "All key experiment details provided.";
@@ -440,7 +451,7 @@ function refreshMissingTags() {
     const key = input.dataset.meta || input.dataset.qty;
     const f = META_FIELDS.find((x) => x.key === key);
     const tag = label.querySelector(".tag-missing");
-    const isMissing = f.required && metaValueMissing(f, state.metadata);
+    const isMissing = metaFieldRequired(f, state.metadata) && metaValueMissing(f, state.metadata);
     if (isMissing && !tag) label.querySelector("span").insertAdjacentHTML("beforeend", ` <span class="tag-missing">missing</span>`);
     if (!isMissing && tag) tag.remove();
   });
@@ -1067,7 +1078,7 @@ async function openScaleDialog() {
     <label class="field" id="ph-field" hidden><span>pH</span><input id="scale-ph" type="number" step="any" value="${esc(m.ph ?? "")}"></label>
     <div id="custom-fields" hidden>
       <label class="field"><span>Offset to add (V)</span><input id="scale-offset" type="number" step="any"></label>
-      <label class="field"><span>Source of this offset</span><input id="scale-desc" type="text" placeholder="e.g., measured vs master Ag/AgCl"></label>
+      <label class="field"><span>Source of this offset</span><input id="scale-desc" type="text"></label>
     </div>
     <div id="scale-preview" class="alert alert-info small">Choose a target scale.</div>`, {
     okText: "Apply conversion",
