@@ -79,7 +79,7 @@ const META_FIELDS = [
   { key: "reference_detail", label: "Reference details", type: "text", placeholder: "describe the reference", showIf: (m) => m.reference_electrode === "other" },
   { key: "scan_rate", label: "Scan rate", type: "quantity", units: ["mV/s", "V/s"], required: true },
   { key: "active_mass_mg", label: "Active-material mass (mg)", type: "number", showIf: (m) => m.process_type !== "dissolved_species" },
-  { key: "analyte_concentration", label: "Analyte concentration", type: "quantity", units: ["mM", "M"], showIf: (m) => m.process_type === "dissolved_species" },
+  { key: "analyte_concentration", label: "Analyte concentration", type: "quantity", units: ["mM", "M", "µM", "nM"], showIf: (m) => m.process_type === "dissolved_species" },
   { key: "diffusion_coefficient_cm2_s", label: "Diffusion coefficient (cm²/s)", type: "number", placeholder: "optional", showIf: (m) => m.process_type === "dissolved_species" },
   { key: "electrons_n", label: "Electrons transferred, n", type: "number", placeholder: "1 if blank", showIf: (m) => m.process_type === "dissolved_species" },
   { key: "electrode_area_cm2", label: "Electrode area (cm²)", type: "number" },
@@ -107,6 +107,11 @@ const state = {
   selectedCycle: null,
   referenceConversion: null,
   normalize: false,
+  generation: 0,
+  analysisRequest: 0,
+  reportRequest: 0,
+  analyzing: false,
+  appliedConfig: null,
   analysis: null,
   report: null,
   evidence: freshEvidence(),
@@ -131,6 +136,8 @@ async function init() {
 }
 
 function bindStaticEvents() {
+  ["input", "change"].forEach((event) => $("#setup").addEventListener(event, () => queueMicrotask(updateDraft)));
+  window.addEventListener("beforeunload", (event) => { if (state.analysis) { event.preventDefault(); event.returnValue = ""; } });
   const dz = $("#dropzone");
   dz.addEventListener("keydown", (e) => {
     if (e.target === dz && ["Enter", " "].includes(e.key)) {
@@ -149,8 +156,10 @@ function bindStaticEvents() {
   $("#analyze-btn").addEventListener("click", () => runAnalysis());
   ["#opt-all", "#opt-base", "#opt-smooth"].forEach((id) => $(id).addEventListener("change", renderPlot));
   $("#evidence-btn").addEventListener("click", runEvidence);
-  $("#btn-png").addEventListener("click", () =>
-    Plotly.downloadImage("plot", { format: "png", width: 1400, height: 800, filename: `benchcheck-cv-${(state.fileName || "data").replace(/\.\w+$/, "")}` }));
+  $("#btn-png").addEventListener("click", async () => {
+    await Plotly.relayout("plot", { paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", "font.color": "#172522", "xaxis.color": "#172522", "yaxis.color": "#172522" });
+    await Plotly.downloadImage("plot", { format: "png", width: 1400, height: 800, filename: `benchcheck-cv-${(state.fileName || "data").replace(/\.\w+$/, "")}` });
+  });
   $("#btn-scale").addEventListener("click", openScaleDialog);
   $("#btn-area").addEventListener("click", openAreaDialog);
   $$("[data-export]").forEach((b) => b.addEventListener("click", () => exportReport(b.dataset.export)));
@@ -186,6 +195,15 @@ function renderEvidencePill() {
 
 async function loadFile(file) {
   showError("");
+  state.generation++;
+  state.analysisRequest++;
+  state.reportRequest++;
+  state.analyzing = false;
+  state.appliedConfig = null;
+  state.metadata = blankMetadata();
+  state.forward = "auto";
+  $("#setup").open = true;
+  $("#setup-line").textContent = "";
   state.file = file;
   state.fileName = file.name;
   state.synthetic = false;
@@ -201,6 +219,7 @@ async function loadFile(file) {
   $("#meta-card").hidden = true;
   $("#file-info").hidden = true;
   $("#analyze-btn").disabled = true;
+  $("#analyze-btn").textContent = "Confirm & analyze";
   $("#dropzone").setAttribute("aria-busy", "true");
   $("#upload-title").textContent = "Reading your file…";
   const requestId = state.loadRequest = (state.loadRequest || 0) + 1;
@@ -217,7 +236,14 @@ async function loadFile(file) {
     // Preserve explicit provenance markers in uploaded CSV/TXT comments.
     state.synthetic = /^\s*#\s*(?:synthetic|simulated)\b/im.test(preamble);
   } catch (e) {
-    if (requestId === state.loadRequest) showError(`Could not read ${file.name}: ${e.message}`);
+    if (requestId === state.loadRequest) {
+      state.fileName = null;
+      $("#setup-line").textContent = "Choose another data file";
+      $("#setup").open = true;
+      updateWorkspace("upload");
+      showError(`Could not read ${file.name}: ${e.message}`);
+      $("#dropzone").focus();
+    }
     return;
   } finally {
     if (requestId === state.loadRequest) {
@@ -263,6 +289,7 @@ function updateWorkspace(stage) {
   $("#welcome-guide").hidden = loaded;
   ["upload", "confirm", "review"].forEach((step) => {
     const el = $(`#progress-${step}`);
+    el.classList.toggle("is-complete", ["upload", "confirm", "review"].indexOf(step) < ["upload", "confirm", "review"].indexOf(stage));
     if (step === stage) el.setAttribute("aria-current", "step");
     else el.removeAttribute("aria-current");
   });
@@ -273,7 +300,7 @@ function columnSelect(role, allowNone) {
   const cur = state.mapping[role];
   const opts = (allowNone ? [`<option value="">— none —</option>`] : [`<option value="">— select —</option>`])
     .concat(cols.map((c) => `<option value="${esc(c)}" ${c === cur ? "selected" : ""}>${esc(c)}</option>`));
-  return `<select aria-label="${role} column" data-map="${role}">${opts.join("")}</select>`;
+  return `<select title="${esc(cur || "Select a column")}" aria-label="${role} column" data-map="${role}">${opts.join("")}</select>`;
 }
 
 function unitSelect(role) {
@@ -289,6 +316,7 @@ function suggestionTag(role) {
 }
 
 function renderMapping() {
+  const focusSelector = activeControl();
   const ins = state.inspect;
   const mapped = new Set(Object.values(state.mapping).filter(Boolean));
   const head = ins.columns.map((c) => `<th${mapped.has(c) ? ' class="is-mapped"' : ""}>${esc(c)}</th>`).join("");
@@ -307,7 +335,7 @@ function renderMapping() {
           <option value="cathodic_positive" ${state.convention === "cathodic_positive" ? "selected" : ""}>Cathodic + (US)</option>
         </select></label>
       <label class="field"><span>Forward sweep of each cycle</span>
-        <select data-opt="forward" title="Auto uses the direction of the first full-range sweep">
+        <select data-opt="forward" title="Auto uses the initial scan direction, including a partial sweep">
           <option value="auto" ${state.forward === "auto" ? "selected" : ""}>Auto-detect</option>
           <option value="positive" ${state.forward === "positive" ? "selected" : ""}>Positive-going first</option>
           <option value="negative" ${state.forward === "negative" ? "selected" : ""}>Negative-going first</option>
@@ -334,6 +362,7 @@ function renderMapping() {
     if (k === "smoothing") state.processing.smoothing_mv = Number(s.value);
     if (k === "baseline") state.processing.baseline = s.value;
   }));
+  restoreControl(focusSelector);
 }
 
 function metaValueMissing(f, m) {
@@ -344,6 +373,7 @@ function metaValueMissing(f, m) {
 }
 
 function renderMetaForm() {
+  const focusSelector = activeControl();
   const m = state.metadata;
   const refs = state.status.reference_electrodes;
   const html = META_FIELDS.filter((f) => !f.showIf || f.showIf(m)).map((f) => {
@@ -352,7 +382,7 @@ function renderMetaForm() {
     let control = "";
     if (f.type === "text" || f.type === "number") {
       const val = m[f.key] ?? "";
-      control = `<input data-meta="${f.key}" type="${f.type === "number" ? "number" : "text"}" ${f.type === "number" ? 'step="any"' : ""} value="${esc(val)}" placeholder="${esc(f.placeholder || "")}">`;
+      control = `<input data-meta="${f.key}" type="${f.type === "number" ? "number" : "text"}" ${f.type === "number" ? numericAttrs(f.key) : 'maxlength="500"'} value="${esc(val)}" placeholder="${esc(f.placeholder || "")}">`;
     } else if (f.type === "select") {
       control = `<select data-meta="${f.key}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${m[f.key] === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
     } else if (f.type === "reference") {
@@ -362,7 +392,7 @@ function renderMetaForm() {
       control = `<div class="radio-row">${f.options.map(([v, l]) => `<label><input type="radio" name="${f.key}" data-meta="${f.key}" value="${esc(v)}" ${m[f.key] === v ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div>`;
     } else if (f.type === "quantity") {
       const q = m[f.key] || { value: null, unit: f.units[0] };
-      control = `<div class="inline"><input data-qty="${f.key}" type="number" step="any" value="${esc(q.value ?? "")}">
+      control = `<div class="inline"><input data-qty="${f.key}" type="number" min="0.000000000000001" step="any" value="${esc(q.value ?? "")}">
         <select aria-label="${esc(f.label)} unit" data-qunit="${f.key}">${f.units.map((u) => `<option ${q.unit === u ? "selected" : ""}>${esc(u)}</option>`).join("")}</select></div>`;
     }
     if (f.type === "radio") return `<fieldset class="${cls}"><legend><span>${esc(f.label)} ${missing}</span></legend>${control}</fieldset>`;
@@ -378,6 +408,7 @@ function renderMetaForm() {
       if (field.type === "number") v = v === "" ? null : Number(v);
       if (v === "") v = null;
       state.metadata[key] = v;
+      if (key === "electrode_area_cm2") state.normalize = false;
       if (rerenderKeys.has(key)) renderMetaForm();
       else refreshMissingTags();
       updateSetupLine();
@@ -395,6 +426,7 @@ function renderMetaForm() {
     state.metadata[k] = { ...(state.metadata[k] || { value: null }), unit: el.value };
   }));
   refreshMissingTags();
+  restoreControl(focusSelector);
 }
 
 function refreshMissingTags() {
@@ -419,8 +451,8 @@ function updateSetupLine() {
   const m = state.metadata;
   const refs = state.status?.reference_electrodes || {};
   const parts = [state.fileName];
-  if (state.mapping.potential) parts.push(`E: ${state.mapping.potential} (${uLabel(state.units.potential)})`);
-  if (state.mapping.current) parts.push(`i: ${state.mapping.current} (${uLabel(state.units.current)})`);
+  if (state.mapping.potential) parts.push(`E: ${state.mapping.potential} ${headerHasUnit(state.mapping.potential) ? "" : `(${uLabel(state.units.potential)})`}`);
+  if (state.mapping.current) parts.push(`i: ${state.mapping.current} ${headerHasUnit(state.mapping.current) ? "" : `(${uLabel(state.units.current)})`}`);
   if (m.electrode_material) parts.push(m.electrode_material);
   if (m.electrolyte) parts.push(m.electrolyte);
   if (m.reference_electrode) parts.push(refs[m.reference_electrode]?.label || m.reference_electrode);
@@ -457,25 +489,43 @@ function evidenceKey(a) {
 }
 const triggeredIds = (a) => (a.hypotheses || []).filter((h) => h.triggered).map((h) => h.id);
 
-async function runAnalysis() {
+async function runAnalysis({ cycleChange = false } = {}) {
   showError("");
   if (!state.file) return showError("Load a data file first.");
   if (!state.mapping.potential || !state.mapping.current) return showError("Select the potential and current columns.");
-  if (state.mapping.potential === state.mapping.current) return showError("Potential and current must be different columns.");
+  const columns = Object.values(state.mapping).filter(Boolean);
+  if (new Set(columns).size !== columns.length) return showError("Potential, current and time must use different columns.");
+  const invalid = $$("#meta-form input").find((input) => !input.checkValidity());
+  if (invalid) { invalid.reportValidity(); return; }
+  const requestId = ++state.analysisRequest;
+  const generation = state.generation;
+  const config = structuredClone(buildConfig());
+  state.analyzing = true;
+  updateDraft();
   const btn = $("#analyze-btn");
   btn.disabled = true;
   btn.innerHTML = `<span class="spinner"></span> Analyzing…`;
   const form = new FormData();
   form.append("file", state.file, state.fileName);
-  form.append("config", JSON.stringify(buildConfig()));
+  form.append("config", JSON.stringify(config));
   try {
-    state.analysis = await api("/api/analyze", { method: "POST", form });
+    const result = await api("/api/analyze", { method: "POST", form });
+    if (requestId !== state.analysisRequest || generation !== state.generation) return;
+    state.analysis = result;
+    state.appliedConfig = config;
+    state.normalize = Boolean(result.display.density && config.normalize_by_area);
   } catch (e) {
+    if (requestId !== state.analysisRequest || generation !== state.generation) return;
+    state.normalize = Boolean(state.analysis?.display.density && state.appliedConfig?.normalize_by_area);
     showError(`Analysis failed: ${e.message}`);
     return;
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Confirm & analyze";
+    if (requestId === state.analysisRequest && generation === state.generation) {
+      state.analyzing = false;
+      btn.disabled = false;
+      btn.textContent = "Confirm & analyze";
+      updateDraft();
+    }
   }
   state.selectedCycle = state.analysis.selected_cycle;
   if (state.evidence.done && state.evidence.ranFor !== evidenceKey(state.analysis)) state.evidence.outdated = true;
@@ -484,7 +534,10 @@ async function runAnalysis() {
   renderResults();
   updateWorkspace("review");
   await refreshReport();
-  $("#h-plot").focus({ preventScroll: true });
+  if (requestId !== state.analysisRequest || generation !== state.generation) return;
+  updateDraft();
+  if (cycleChange) $(`[data-cycle="${state.selectedCycle}"]`)?.focus({ preventScroll: true });
+  else $("#h-plot").focus({ preventScroll: true });
 }
 
 function renderResults() {
@@ -506,11 +559,11 @@ function renderResults() {
 function renderCycleButtons() {
   const a = state.analysis;
   $("#cycle-buttons").innerHTML = `<span class="seg-label">Cycle</span>` + a.cycle_list
-    .map((c) => `<button type="button" data-cycle="${c.number}" class="${c.number === a.selected_cycle ? "on" : ""}" title="${c.complete ? "complete cycle" : "incomplete cycle"}">${c.number}${c.complete ? "" : "*"}</button>`)
+    .map((c) => `<button type="button" data-cycle="${c.number}" aria-pressed="${c.number === a.selected_cycle}" class="${c.number === a.selected_cycle ? "on" : ""}" title="${c.complete ? "complete cycle" : "incomplete cycle"}">${c.number}${c.complete ? "" : "*"}</button>`)
     .join("");
   $$("[data-cycle]").forEach((b) => b.addEventListener("click", async () => {
     state.selectedCycle = Number(b.dataset.cycle);
-    await runAnalysis();
+    await runAnalysis({ cycleChange: true });
   }));
 }
 
@@ -609,7 +662,7 @@ function renderPlot() {
     margin: { l: 70, r: 18, t: 12, b: 54 },
     paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
     font: { family: cssVar("--font-body"), size: 13, color: cssColor("--text") },
-    xaxis: { title: { text: `E / ${a.display.potential_label}` }, gridcolor: grid, zeroline: false, linecolor: grid, mirror: true, showline: true },
+    xaxis: { title: { text: `E / ${esc(a.display.potential_label)}` }, gridcolor: grid, zeroline: false, linecolor: grid, mirror: true, showline: true },
     yaxis: { title: { text: `${a.display.density ? "j" : "i"} / ${unit}` }, gridcolor: grid, zerolinecolor: cssColor("--muted"), zerolinewidth: 1, linecolor: grid, mirror: true, showline: true },
     showlegend: false, hovermode: "closest", annotations,
   };
@@ -694,19 +747,25 @@ function renderObserved() {
 // ------------------------------------------------------------------ report
 
 async function refreshReport() {
-  const { data, ...summary } = state.analysis;
+  const analysis = state.analysis;
+  if (!analysis) return;
+  const requestId = ++state.reportRequest;
+  const { data, ...summary } = analysis;
   const ev = state.evidence;
-  const evidence = ev.done
+  const evidence = ev.done && !ev.outdated
     ? { mode: ev.mode, queries: ev.queries.map(({ id, query, purpose, hypotheses, status }) => ({ id, query, purpose, hypotheses, status })), log: ev.log, sources: ev.sources, message: ev.message }
     : { mode: "not run", message: "Literature evidence has not been retrieved yet." };
   try {
-    state.report = await api("/api/report", { method: "POST", json: { analysis: summary, evidence } });
+    const report = await api("/api/report", { method: "POST", json: { analysis_id: analysis.analysis_id, evidence } });
+    if (requestId !== state.reportRequest || analysis !== state.analysis) return;
+    state.report = report;
   } catch (e) {
-    showError(`Report failed: ${e.message}`);
+    if (requestId === state.reportRequest && analysis === state.analysis) showError(`Report failed: ${e.message}`);
     return;
   }
   renderNextCheck();
   renderReport();
+  updateDraft();
 }
 
 function evidenceBadge(status) {
@@ -815,63 +874,74 @@ async function runEvidence() {
   const plan = a.evidence_plan || [];
   const preferCache = $("#opt-prefer-cache").checked;
   state.evidence = { ...freshEvidence(), running: true, queries: plan.map((q) => ({ ...q, status: "pending" })) };
+  const ev = state.evidence;
+  const current = () => state.evidence === ev && state.analysis === a;
   $("#evidence-btn").disabled = true;
   renderEvidence();
   const ctx = evidenceContext();
   const records = [];
-  for (const q of state.evidence.queries) {
+  for (const q of ev.queries) {
     q.status = "running";
+    if (!current()) return;
     renderEvidence();
     try {
-      const r = await api("/api/evidence/search", { method: "POST", json: { query_id: q.id, query: q.query, purpose: q.purpose, hypothesis_ids: q.hypotheses, context: ctx, prefer_cache: preferCache } });
+      const r = await api("/api/evidence/search", { method: "POST", json: { analysis_id: a.analysis_id, query_id: q.id, query: q.query, purpose: q.purpose, hypothesis_ids: q.hypotheses, context: ctx, prefer_cache: preferCache } });
+      if (!current()) return;
       q.status = r.log.status;
       q.log = r.log;
-      state.evidence.log.push(r.log);
+      ev.log.push(r.log);
       records.push(...r.sources);
     } catch (e) {
       q.status = "error";
       q.log = { error: e.message };
-      state.evidence.log.push({ engine: "google_scholar", query: q.query, status: "error", error: e.message });
+      ev.log.push({ engine: "google_scholar", query: q.query, status: "error", error: e.message });
     }
+    if (!current()) return;
     renderEvidence();
   }
   if (records.length) {
     try {
-      const sel = await api("/api/evidence/select", { method: "POST", json: { sources: records, context: ctx } });
-      state.evidence.sources = sel.sources;
-      state.evidence.extractPlan = sel.extract.map((x) => ({ ...x, status: "pending" }));
+      const sel = await api("/api/evidence/select", { method: "POST", json: { analysis_id: a.analysis_id, sources: records, context: ctx } });
+      if (!current()) return;
+      ev.sources = sel.sources;
+      ev.extractPlan = sel.extract.map((x) => ({ ...x, status: "pending" }));
     } catch (e) {
-      state.evidence.message = `Could not rank sources: ${e.message}`;
+      ev.message = `Could not rank sources: ${e.message}`;
     }
+    if (!current()) return;
     renderEvidence();
-    await pool(state.evidence.extractPlan, 2, async (item) => {
+    await pool(ev.extractPlan, 2, async (item) => {
       item.status = "running";
+      if (!current()) return;
       renderEvidence();
-      const idx = state.evidence.sources.findIndex((s) => s.source_id === item.source_id);
+      const idx = ev.sources.findIndex((s) => s.source_id === item.source_id);
       try {
-        const r = await api("/api/evidence/extract", { method: "POST", json: { source: state.evidence.sources[idx], context: ctx, prefer_cache: preferCache } });
-        state.evidence.sources[idx] = r.source;
+        const r = await api("/api/evidence/extract", { method: "POST", json: { analysis_id: a.analysis_id, source: ev.sources[idx], context: ctx, prefer_cache: preferCache } });
+        if (!current()) return;
+        ev.sources[idx] = r.source;
         item.status = r.log.ok ? (r.log.cached ? "cached" : "live") : r.log.status;
         item.classification = r.log.classification;
-        state.evidence.log.push(r.log);
+        ev.log.push(r.log);
       } catch (e) {
         item.status = "error";
-        state.evidence.log.push({ engine: "extract", url: item.url, status: "error", error: e.message });
+        ev.log.push({ engine: "extract", url: item.url, status: "error", error: e.message });
       }
+      if (!current()) return;
       renderEvidence();
     });
   }
-  const okLogs = state.evidence.log.filter((l) => l.ok);
+  if (!current()) return;
+  const okLogs = ev.log.filter((l) => l.ok);
   const live = okLogs.some((l) => l.status === "live");
-  const cached = okLogs.some((l) => l.status === "cached");
-  state.evidence.mode = live && cached ? "live + cached" : live ? "live" : cached ? "cached" : "unavailable";
+  const cached = okLogs.some((l) => l.cached || l.status === "cached" || l.status === "provider-cached");
+  ev.mode = live && cached ? "live + cached" : live ? "live" : cached ? "cached" : "unavailable";
   if (!okLogs.length) {
-    const reason = state.evidence.log.find((l) => l.error)?.error || "No response.";
-    state.evidence.message = `Literature evidence unavailable: ${reason} The numerical analysis above is unaffected.`;
+    const reason = ev.log.find((l) => l.error)?.error || "No response.";
+    ev.message = `Literature evidence unavailable: ${reason} The numerical analysis above is unaffected.`;
   }
-  state.evidence.running = false;
-  state.evidence.done = true;
-  state.evidence.ranFor = evidenceKey(a);
+  ev.running = false;
+  ev.done = true;
+  ev.ranFor = evidenceKey(a);
   $("#evidence-btn").disabled = false;
   $("#evidence-btn").textContent = "Re-run evidence search";
   renderEvidence();
@@ -879,7 +949,7 @@ async function runEvidence() {
 }
 
 function statusChip(status, extra = "") {
-  const cls = { live: "b-live", cached: "b-cached", error: "b-error", unavailable: "b-none", pending: "b-none", running: "b-none" }[status] || "b-none";
+  const cls = { live: "b-live", cached: "b-cached", "provider-cached": "b-cached", error: "b-error", unavailable: "b-none", pending: "b-none", running: "b-none" }[status] || "b-none";
   const text = status === "running" ? `<span class="spinner"></span> running` : esc(status);
   return `<span class="badge ${cls}">${text}</span>${extra}`;
 }
@@ -904,7 +974,7 @@ function renderEvidence() {
       const err = q.log?.error ? `<span class="small is-bad">${esc(q.log.error)}</span>` : "";
       return `<div class="query-row">${statusChip(q.status)}<code>${esc(q.query)}</code><span class="q-purpose">${esc(q.purpose)}${n !== undefined ? `, ${n} results` : ""}${when}</span>${err}</div>`;
     }).join("")}
-    ${ev.extractPlan.length ? `<div class="query-row"><span class="small"><strong>SerpApi Extract:</strong> ${ev.extractPlan.filter((x) => !["pending", "running"].includes(x.status)).length}/${ev.extractPlan.length} pages retrieved</span>
+    ${ev.extractPlan.length ? `<div class="query-row"><span class="small"><strong>SerpApi Extract:</strong> ${ev.extractPlan.filter((x) => ["live", "cached", "provider-cached"].includes(x.status)).length}/${ev.extractPlan.length} pages retrieved</span>
       ${ev.extractPlan.some((x) => x.status === "running") ? `<span class="spinner"></span>` : ""}</div>` : ""}</div>`;
     if (ev.message) head += `<div class="alert alert-warn small">${esc(ev.message)}</div>`;
     if (ev.outdated) head += `<div class="alert alert-warn small">The analysis changed since this evidence was retrieved. Re-run the evidence search to update it.</div>`;
@@ -940,7 +1010,7 @@ function renderEvidence() {
     const passages = [...grouped.values()]
       .sort((p, q) => (p.labels.length === 1 && p.hypothesis_id === "context") - (q.labels.length === 1 && q.hypothesis_id === "context"))
       .slice(0, 3)
-      .map((p) => `<div class="passage">“${passageHtml(p)}”<div class="passage-meta">${p.labels.map(esc).join("; ")}<br>${esc(p.location)}${p.verbatim_verified ? ", verbatim ✓" : ""}</div></div>`)
+      .map((p) => `<div class="passage">“${passageHtml(p)}”<div class="passage-meta">${p.labels.map(esc).join("; ")}<br>${esc(p.location)}${p.verbatim_verified ? (p.level === "search snippet" ? ", matches search snippet" : ", matches retrieved text ✓") : ""}</div></div>`)
       .join("") || `<span class="muted small">No passage matched the hypotheses' terms.</span>`;
     const conds = (src.conditions || []).map((c) => `<span class="chip c-${esc(c.status)}" title="${esc(c.note)}${c.paper ? ". Paper: " + esc(c.paper) : ""}">${STATUS_TEXT[c.status] || ""} ${esc(c.condition)}</span>`).join("");
     const app = src.applicability || {};
@@ -972,6 +1042,7 @@ function confirmDialog(title, bodyHtml, { okText = "Confirm", onRender } = {}) {
   $("#dlg-title").textContent = title;
   $("#dlg-body").innerHTML = bodyHtml;
   $("#dlg-ok").textContent = okText;
+  $("#dlg-ok").disabled = false;
   if (onRender) onRender(dlg);
   return new Promise((resolve) => {
     dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
@@ -981,7 +1052,7 @@ function confirmDialog(title, bodyHtml, { okText = "Confirm", onRender } = {}) {
 
 async function openScaleDialog() {
   const a = state.analysis;
-  if (!a) return;
+  if (!a || draftDirty() || state.analyzing) return;
   const m = state.metadata;
   const refLabel = state.status.reference_electrodes[m.reference_electrode]?.label || "the recorded reference";
   let preview = null;
@@ -998,21 +1069,34 @@ async function openScaleDialog() {
     okText: "Apply conversion",
     onRender: (dlg) => {
       const target = $("#scale-target", dlg);
+      let previewRequest = 0;
       const update = async () => {
+        const request = ++previewRequest;
+        preview = null;
+        $("#dlg-ok").disabled = true;
         $("#ph-field", dlg).hidden = target.value !== "RHE";
         $("#custom-fields", dlg).hidden = target.value !== "custom";
         if (!target.value) {
           preview = null;
+          $("#dlg-ok").disabled = false;
           $("#scale-preview", dlg).textContent = "No conversion: potentials stay on the recorded scale.";
           return;
         }
         const ph = $("#scale-ph", dlg).value;
         const off = $("#scale-offset", dlg).value;
-        preview = await api("/api/conversion-preview", { method: "POST", json: {
+        let nextPreview;
+        try { nextPreview = await api("/api/conversion-preview", { method: "POST", json: {
           from: m.reference_electrode, target: target.value, ph: ph === "" ? null : Number(ph), temperature_c: m.temperature_c ?? null,
-          offset_v: off === "" ? null : Number(off), description: $("#scale-desc", dlg).value || null } });
+          offset_v: target.value !== "custom" || off === "" ? null : Number(off), description: $("#scale-desc", dlg).value || null } });
+        } catch (error) {
+          if (request === previewRequest) $("#scale-preview", dlg).textContent = error.message;
+          return;
+        }
+        if (request !== previewRequest || !dlg.open) return;
+        preview = nextPreview;
+        $("#dlg-ok").disabled = !preview.possible;
         $("#scale-preview", dlg).innerHTML = preview.possible
-          ? `<strong>${esc(preview.explanation)}</strong><br>${preview.caveats.map(esc).join("<br>")}`
+          ? `<strong>${esc(preview.to_label)}</strong><br>${esc(preview.explanation)}<br>${preview.caveats.map(esc).join("<br>")}`
           : esc(preview.reason);
       };
       dlg.querySelectorAll("select,input").forEach((el) => el.addEventListener("input", update));
@@ -1023,13 +1107,14 @@ async function openScaleDialog() {
   if (!target) state.referenceConversion = null;
   else if (preview?.possible) {
     if (target === "RHE") state.metadata.ph = Number($("#scale-ph").value);
-    state.referenceConversion = { target, offset_v: target === "custom" ? Number($("#scale-offset").value) : null,
+    state.referenceConversion = { target, offset_v: target === "custom" ? preview.offset_v : null,
       description: target === "custom" ? $("#scale-desc").value || null : null, confirmed: true };
   } else return;
   await runAnalysis();
 }
 
 async function openAreaDialog() {
+  if (draftDirty() || state.analyzing) return;
   const area = state.metadata.electrode_area_cm2;
   if (state.normalize) {
     const ok = await confirmDialog("Current density", `<p>Currents are divided by ${esc(area)} cm². Switch back to current?</p>`, { okText: "Show current" });
@@ -1066,7 +1151,7 @@ function download(name, text, type) {
 
 function exportReport(kind) {
   const r = state.report;
-  if (!r) return;
+  if (!r || draftDirty() || state.analyzing) return;
   const base = `benchcheck-report-${(state.fileName || "data").replace(/\.\w+$/, "")}`;
   if (kind === "md") download(`${base}.md`, r.markdown, "text/markdown");
   if (kind === "html") download(`${base}.html`, r.html, "text/html");
@@ -1079,6 +1164,35 @@ function exportReport(kind) {
 
 function renderGlossary() {
   $("#glossary").innerHTML = GLOSSARY.map(([t, d]) => `<dt>${esc(t)}</dt><dd>${esc(d)}</dd>`).join("");
+}
+
+function activeControl() {
+  const el = document.activeElement;
+  if (!el) return null;
+  const attribute = ["data-meta", "data-qty", "data-qunit", "data-map", "data-unit", "data-opt"].find((key) => el.hasAttribute(key));
+  return attribute ? `[${attribute}="${CSS.escape(el.getAttribute(attribute))}"]${el.type === "radio" ? `[value="${CSS.escape(el.value)}"]` : ""}` : null;
+}
+function restoreControl(selector) { if (selector) $(selector)?.focus({ preventScroll: true }); }
+function numericAttrs(key) {
+  if (key === "electrons_n") return 'min="1" step="1"';
+  if (key === "temperature_c") return 'min="-273.149999" step="any"';
+  if (["electrode_area_cm2", "active_mass_mg", "diffusion_coefficient_cm2_s"].includes(key)) return 'min="0.000000000000001" step="any"';
+  return 'step="any"';
+}
+function headerHasUnit(name) { return /(?:\([^)]*\)|\[[^\]]*\]|\/(?:m?V|[munpµ]?A)(?:\/cm2)?)$/.test(name || ""); }
+function draftDirty() {
+  if (!state.analysis || !state.appliedConfig) return false;
+  const comparable = (config) => { const copy = structuredClone(config); delete copy.selected_cycle; return JSON.stringify(copy); };
+  return comparable(buildConfig()) !== comparable(state.appliedConfig);
+}
+function updateDraft() {
+  const dirty = draftDirty();
+  let banner = $("#draft-warning");
+  if (!banner) { banner = document.createElement("div"); banner.id = "draft-warning"; banner.className = "alert alert-warn"; banner.setAttribute("role", "status"); $("#results").prepend(banner); }
+  banner.hidden = !dirty;
+  banner.textContent = "Settings changed: results are out of date. Confirm & analyze to update results and exports.";
+  $$("[data-cycle], [data-export], #btn-scale, #btn-area, #evidence-btn").forEach((button) => { button.disabled = dirty || state.analyzing || (button.id === "evidence-btn" && state.evidence.running); });
+  $$("[data-export]").forEach((button) => { button.disabled ||= !state.report; });
 }
 
 init();

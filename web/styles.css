@@ -354,7 +354,7 @@ details.disclose ul { margin-block-start: var(--space-xs); }
 @media (max-width: 40rem) {
   :root { --bar-height: 56px; --plot-height: 360px; --text-reading: 1.6rem; }
   .topbar-inner { gap: var(--space-sm); }
-  #evidence-pill { display: none; }
+  #evidence-pill { display: inline-flex; max-width: 45vw; white-space: normal; }
   .workbench { gap: var(--space-lg); padding-block: var(--space-xl) var(--space-lg); }
   .results-title { font-size: var(--text-2xl); }
   .intro-copy { font-size: var(--text-md); }
@@ -373,3 +373,15 @@ details.disclose ul { margin-block-start: var(--space-xs); }
   body { background: var(--color-paper); }
   .panel, .grid-main { break-inside: avoid; }
 }
+
+/* Keep long instrument headers and unit controls inside their grid cells. */
+.field, .field > span, .map-grid > *, .meta-grid > * { min-width: 0; }
+select { min-width: 0; max-width: 100%; text-overflow: ellipsis; }
+.field > span { display: flex; flex-wrap: wrap; gap: .3rem; }
+.inline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(5.5rem, auto); }
+.inline > select { width: 100%; }
+#mapping .inline { grid-template-columns: minmax(0, 1fr); }
+#file-info, #setup-line { overflow-wrap: anywhere; }
+input:invalid { border-color: var(--color-warn, #b44c27); }
+.workflow li.is-complete .workflow-n { background: #e4f1eb; color: #225b45; }
+@media (max-width: 600px) { .inline { grid-template-columns: minmax(0, 1fr) minmax(6rem, auto); } }
