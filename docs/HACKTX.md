@@ -10,7 +10,7 @@ Official sources checked on October 25, 2026:
 - Submit the project and a demonstration video to Devpost before the deadline.
 - Team size: 1–4; team members must attend judging in person. The event page lists college students, ages 18+, US only. Confirm each participant's eligibility and active participation.
 - Keep code and the video public, including after the event for prize eligibility.
-- Disclose AI coding tools honestly in the submission and to judges. This project used **Anthropic Claude Code** and **OpenAI Codex**, with their contributions described in `DEVPOST.md`.
+- Disclose AI coding tools honestly in the submission and to judges. This project used **Anthropic Claude Code** and **OpenAI Codex**, with their contributions described in the README.
 - Follow the MLH Code of Conduct and originality rules. Libraries and frameworks are allowed; previous project code or materials cannot be reused as new hackathon work. Preserve the real commit history.
 - The SerpApi track requires meaningful use of SerpApi. BenchCheck uses Google Scholar search and Extract to connect measured features to quoted passages, condition comparisons, and next-check ranking.
 
@@ -20,6 +20,6 @@ Official sources checked on October 25, 2026:
 - **Video and submission:** record the current app, test public access, include the link in Devpost, select the intended tracks, and submit. No video or submission was created by this frontend update.
 - **Team and timing:** confirm eligibility, attendance, team roster, and that all project work fits the official window. The code cannot verify these facts.
 - **Evidence:** review the live/cached responses and judge whether each passage supports its attached hypothesis. Automated substring checks cannot establish scientific support.
-- **Personal story:** replace draft placeholders only with true experiences. Claim only results that were actually measured.
+- **Personal story:** describe only true experiences. Claim only results that were actually measured.
 
 The frontend intentionally has no example picker. Synthetic test data remain available as repository fixtures. Their explicit SYNTHETIC file comment automatically labels the analysis and exported reports. This change does not certify the entire submission or alter repository visibility.

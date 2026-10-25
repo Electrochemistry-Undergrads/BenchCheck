@@ -25,3 +25,6 @@ screenshots/
 
 # Hallmark working records (screenshots, lint output)
 .hallmark/
+
+# Local AI design tools; the application does not depend on them
+.claude/

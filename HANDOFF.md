@@ -18,7 +18,7 @@ BenchCheck is a FastAPI + vanilla-JS web app for HackTX 2026, targeting **Best U
 pip install -r requirements.txt
 cp .env.example .env          # add SERPAPI_API_KEY
 python -m benchcheck          # http://127.0.0.1:8000
-pip install -r requirements-dev.txt && python -m pytest   # 91 tests
+pip install -r requirements-dev.txt && python -m pytest   # 93 tests
 python scripts/evaluate.py    # 16/16 checks -> docs/evaluation_results.md
 ```
 
@@ -29,10 +29,10 @@ python scripts/evaluate.py    # 16/16 checks -> docs/evaluation_results.md
 | CSV parsing, units, sign convention, segmentation, peaks, baselines, ratios, charge, quality flags | Done, tested, validated against theory (see docs/EVALUATION.md) |
 | Hypothesis rules, next-check ranking, report + export | Done, tested on both synthetic examples against ground truth |
 | SerpApi Google Scholar + Extract client, cache, evidence classification, condition comparison | Implemented; tested offline with labeled fixtures. **Never run against the live API** |
-| Web UI (plot, evidence table, report, confirmation dialogs) | Done; checked with Playwright on desktop and phone widths. Redesigned with the vendored Hallmark skill (Console layout with a white theme): `web/tokens.css` holds every colour, font and spacing token, `web/base.css` the shared base, `web/styles.css` the app. Keep new colours and spacing on those tokens |
+| Web UI (plot, evidence table, report, confirmation dialogs) | Done; checked with Playwright on desktop and phone widths. Styling adapted from Hallmark (license in `LICENSES/Hallmark-MIT.txt`) (Console layout with a white theme): `web/tokens.css` holds every colour, font and spacing token, `web/base.css` the shared base, `web/styles.css` the app. Keep new colours and spacing on those tokens |
 | Offline demo cache (`data/cache/demo/`) | **Empty**: needs a live refresh |
 | Human audit of cited passages | **Not done**: needs real evidence first |
-| Docs: README, demo script, presentation, Devpost draft | Done; personal-story placeholders need filling |
+| Documentation | README, evaluation method/results, HackTX guidance, and this handoff are retained; obsolete submission/presentation drafts are archived in Git history |
 
 ## To-do, in priority order
 
@@ -41,8 +41,8 @@ python scripts/evaluate.py    # 16/16 checks -> docs/evaluation_results.md
    - In a Claude Code cloud session: allow `serpapi.com` under Network access and add `SERPAPI_API_KEY` as a network secret, then start a new session.
 2. **Smoke-test live:** upload the weak-return CSV, confirm its mapping and metadata, click **Find literature evidence**, and check the literature evidence panel for errors. The Extract API launched on 2026-10-13, and its response parser (`benchcheck/evidence/sources.py::parse_extract`) was written against documented field names (`page_information`, `meta_tags`, `text_content.full/markdown`). If real responses differ, adjust it there.
 3. **Record the demo fallback:** `python scripts/refresh_demo_cache.py`. It uses about 16 credits and writes `data/cache/demo/` plus `docs/demo_reports/`. Review the reports, then commit both folders.
-4. **Audit the evidence:** `python scripts/evaluate.py`. Section D lists every cited passage; a human fills in "Supports the statement?". Report the real counts in docs/EVALUATION.md and docs/DEVPOST.md.
-5. **Personalize** the `[Personalize: …]` placeholders in docs/DEMO_SCRIPT.md, docs/PRESENTATION.md and docs/DEVPOST.md with true stories only.
+4. **Audit the evidence:** `python scripts/evaluate.py`. Section D lists every cited passage; a human fills in "Supports the statement?". Report the real counts in docs/EVALUATION.md and the project submission.
+5. **Prepare the project submission** with measured results and true personal experiences only.
 6. **Complete the remaining submission checks in `docs/HACKTX.md`**, including public code/video and accurate AI disclosure. Official rules were verified during the frontend update.
 7. **Rehearse** with `BENCHCHECK_EVIDENCE_MODE=cache python -m benchcheck` as the fallback.
 
@@ -73,3 +73,7 @@ python scripts/evaluate.py    # 16/16 checks -> docs/evaluation_results.md
 - Peak-height ratios read about 3–4% high on the clear example and 9–10% high on the weak example, because of the baseline window (measured, documented).
 - Passage matching is lexical; a passage mentioning a phenomenon doesn't prove it explains the user's data.
 - Only peaks of the expected sign per sweep are detected; overlapping peaks are not deconvoluted.
+
+## Repository cleanup
+
+The full Hallmark development toolkit is no longer tracked; any local copy remains ignored under `.claude/`. Its MIT notice is retained in `LICENSES/`. Draft demo/presentation/submission documents and the outdated screenshot were removed from the tracked tree. Runtime code, tests, validation datasets, and cache tools are retained.

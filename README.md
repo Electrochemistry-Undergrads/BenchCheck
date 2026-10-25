@@ -8,10 +8,6 @@ BenchCheck helps undergraduate and graduate researchers answer one question abou
 
 Upload a CV → confirm columns and units → BenchCheck measures the peaks → searches Google Scholar through **SerpApi** → retrieves accessible paper text through SerpApi's **Extract API** → compares each paper's conditions with yours → proposes the next measurement or metadata check that best separates the competing explanations.
 
-![BenchCheck analyzing the synthetic weak-return-peak example](docs/img/weak-return-analysis.png)
-
-*Synthetic example data: a two-step insertion electrode model scanned to 1.25 V. The forward (blue) and return (orange) sweeps, scan-direction arrows, detected peaks, and baselines are drawn from BenchCheck's own measurements.*
-
 ---
 
 ## Contents
@@ -210,7 +206,7 @@ Known bias, measured rather than hidden: return/forward peak-height ratios read 
 
 ## Hackathon notes
 
-- Built for HackTX 2026, targeting the **Best Use of SerpApi** track. All code in this repository was written from scratch starting 2026-10-24 (see the commit history); verify the timing against the official HackTX hacking-period rules. Third-party libraries: FastAPI, NumPy, SciPy, httpx, Uvicorn, Plotly.js (vendored, MIT).
+- Built for HackTX 2026, targeting the **Best Use of SerpApi** track. All code in this repository was written from scratch starting 2026-10-24 (see the commit history); verify the timing against the official HackTX hacking-period rules. Third-party libraries: FastAPI, NumPy, SciPy, httpx, Uvicorn, Plotly.js (vendored, MIT). Frontend styling was adapted from [Hallmark](https://github.com/Nutlope/hallmark); its [MIT notice](LICENSES/Hallmark-MIT.txt) is retained. The full design toolkit is local development tooling and is not required to run the app.
 - AI assistance: **Anthropic Claude Code** helped develop the initial implementation, tests, and documentation; **OpenAI Codex** helped redesign and verify the frontend and update submission guidance. Disclose both tools in Devpost. Numerical analysis and literature passage selection run deterministically; a language model does not generate the evidence.
 - See [HackTX submission requirements and remaining checks](docs/HACKTX.md). Project eligibility also depends on the team, judging attendance, public code/video, and submission timing; this repository alone does not establish eligibility.
 
@@ -220,3 +216,16 @@ Known bias, measured rather than hidden: return/forward peak-height ratios read 
 - An ICP-OES dilution-chain checker for dissolution measurements (aliquot/final volumes, back-calculation).
 - Scan-rate series upload with automatic b-value and ratio-vs-rate analysis to close the loop on the recommended check.
 - Optional SerpApi Google Scholar Cite lookups for formatted citations in exports.
+
+## Repository layout
+
+- `benchcheck/`: API, numerical analysis, troubleshooting rules, literature evidence, and validation simulators.
+- `web/`: browser interface and the vendored Plotly runtime.
+- `tests/`: regression tests and labeled offline API fixtures.
+- `examples/`: synthetic datasets used by tests and evaluation scripts.
+- `scripts/`: dataset generation, numerical evaluation, and evidence-cache refresh.
+- `docs/`: evaluation method/results and HackTX guidance.
+- `data/cache/`: cache documentation and the demo-cache location.
+- `LICENSES/`: notices for adapted third-party code.
+
+Local design tooling under `.claude/` is ignored. Draft submission/presentation documents and the outdated interface screenshot have been removed from the tracked tree; earlier versions remain in Git history.
